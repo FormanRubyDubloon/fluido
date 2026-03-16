@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useSettingsStore } from "@/store/settings-store";
 import { SyncButton } from "./SyncButton";
+import { SyncProgress } from "./SyncProgress";
 
 interface ShellProps {
   children: React.ReactNode;
@@ -40,6 +41,7 @@ export function Shell({ children, sidebar }: ShellProps) {
               </button>
             </div>
           </div>
+          <SyncProgress />
           <nav className="p-3 overflow-y-auto h-[calc(100vh-3.5rem)]">
             {sidebar}
           </nav>
@@ -53,34 +55,36 @@ export function Shell({ children, sidebar }: ShellProps) {
         )}
 
         <main className="flex-1 flex flex-col min-w-0">
-          <header className="flex items-center h-14 px-4 border-b border-gray-200 dark:border-gray-800 md:hidden">
-            <button
-              onClick={() => setSidebarOpen(true)}
-              className="flex items-center justify-center w-11 h-11 -ml-2 rounded-lg
-                         text-gray-500 hover:text-gray-700 hover:bg-gray-100
-                         dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-gray-800"
-              aria-label="Open sidebar"
-            >
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
+          <header className="flex items-center justify-between h-14 px-4 border-b border-gray-200 dark:border-gray-800 md:hidden">
+            <div className="flex items-center">
+              <button
+                onClick={() => setSidebarOpen(true)}
+                className="flex items-center justify-center w-11 h-11 -ml-2 rounded-lg
+                           text-gray-500 hover:text-gray-700 hover:bg-gray-100
+                           dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-gray-800"
+                aria-label="Open sidebar"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M4 6h16M4 12h16M4 18h16"
-                />
-              </svg>
-            </button>
-            <h1 className="ml-3 text-lg font-semibold">Fluido</h1>
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              </button>
+              <h1 className="ml-3 text-lg font-semibold">Fluido</h1>
+            </div>
+            <SyncButton />
           </header>
-
+          <MobileSyncProgress />
           <div className="flex-1 overflow-y-auto p-4 md:p-6">{children}</div>
         </main>
       </div>
+    </div>
+  );
+}
+
+/** Show sync progress below mobile header */
+function MobileSyncProgress() {
+  return (
+    <div className="md:hidden">
+      <SyncProgress />
     </div>
   );
 }
