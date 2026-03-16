@@ -1,5 +1,5 @@
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
-import { pushAllToCloud, pushCardReview } from "./push";
+import { pushChangesToCloud, pushAllToCloud, pushCardReview } from "./push";
 import { pullAllFromCloud } from "./pull";
 import { pushMediaToCloud, pullMediaFromCloud } from "./media";
 import { getDb } from "@/platform/adapter";
@@ -12,6 +12,8 @@ export interface SyncResult {
   cards: number;
   reviewLogs: number;
   media: number;
+  incremental: boolean;
+  totalPushed: number;
 }
 
 export async function getCurrentUserId(): Promise<string | null> {
@@ -20,11 +22,68 @@ export async function getCurrentUserId(): Promise<string | null> {
   return data.session?.user?.id ?? null;
 }
 
+/**
+ * Smart push — only syncs what changed since last sync.
+ * Falls back to full push on first sync or after import.
+ */
 export async function fullPush(onProgress?: ProgressCallback): Promise<SyncResult | null> {
   const userId = await getCurrentUserId();
   if (!userId) return null;
 
-  onProgress?.("Uploading data…", 0);
+  onProgress?.("Checking for changes…", 0);
+
+  const pushResult = await pushChangesToCloud(userId, (stage, pct) => {
+    onProgress?.(stage, Math.round(pct * 0.7));
+  });
+
+  if (pushResult.totalPushed > 0) {
+    onProgress?.("Uploading settings…", 70);
+    await pushSettings(userId);
+
+    onProgress?.("Checking media…", 75);
+    const media = await pushMediaToCloud(userId, (stage, pct) => {
+      onProgress?.(stage, 75 + Math.round(pct * 0.25));
+    });
+
+    onProgress?.("Done!", 100);
+
+    const db = getDb();
+    const deckCount = db.exec<{ c: number }>("SELECT COUNT(*) as c FROM decks")[0]?.c ?? 0;
+    const cardCount = db.exec<{ c: number }>("SELECT COUNT(*) as c FROM cards")[0]?.c ?? 0;
+    const logCount = db.exec<{ c: number }>("SELECT COUNT(*) as c FROM review_logs")[0]?.c ?? 0;
+
+    return {
+      direction: "push",
+      decks: deckCount,
+      cards: cardCount,
+      reviewLogs: logCount,
+      media,
+      incremental: true,
+      totalPushed: pushResult.totalPushed,
+    };
+  }
+
+  // Nothing changed
+  onProgress?.("Already up to date", 100);
+  return {
+    direction: "push",
+    decks: 0,
+    cards: 0,
+    reviewLogs: 0,
+    media: 0,
+    incremental: true,
+    totalPushed: 0,
+  };
+}
+
+/**
+ * Force full push — used after import when we need to push everything.
+ */
+export async function forceFullPush(onProgress?: ProgressCallback): Promise<SyncResult | null> {
+  const userId = await getCurrentUserId();
+  if (!userId) return null;
+
+  onProgress?.("Uploading all data…", 0);
   await pushAllToCloud(userId, (stage, pct) => {
     onProgress?.(stage, Math.round(pct * 0.7));
   });
@@ -37,13 +96,22 @@ export async function fullPush(onProgress?: ProgressCallback): Promise<SyncResul
     onProgress?.(stage, 75 + Math.round(pct * 0.25));
   });
 
+  onProgress?.("Done!", 100);
+
   const db = getDb();
   const deckCount = db.exec<{ c: number }>("SELECT COUNT(*) as c FROM decks")[0]?.c ?? 0;
   const cardCount = db.exec<{ c: number }>("SELECT COUNT(*) as c FROM cards")[0]?.c ?? 0;
   const logCount = db.exec<{ c: number }>("SELECT COUNT(*) as c FROM review_logs")[0]?.c ?? 0;
 
-  onProgress?.("Done!", 100);
-  return { direction: "push", decks: deckCount, cards: cardCount, reviewLogs: logCount, media };
+  return {
+    direction: "push",
+    decks: deckCount,
+    cards: cardCount,
+    reviewLogs: logCount,
+    media,
+    incremental: false,
+    totalPushed: deckCount + cardCount + logCount,
+  };
 }
 
 export async function fullPull(onProgress?: ProgressCallback): Promise<SyncResult | null> {
@@ -65,6 +133,8 @@ export async function fullPull(onProgress?: ProgressCallback): Promise<SyncResul
     cards: result.cards,
     reviewLogs: result.reviewLogs,
     media,
+    incremental: false,
+    totalPushed: 0,
   };
 }
 

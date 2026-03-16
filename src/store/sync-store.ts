@@ -23,7 +23,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
   push: async () => {
     if (get().syncing) return;
 
-    set({ syncing: true, done: false, error: null, stage: "Starting…", percent: 0 });
+    set({ syncing: true, done: false, error: null, stage: "Checking for changes…", percent: 0 });
 
     try {
       const onProgress: ProgressCallback = (stage, percent) => {
@@ -32,13 +32,13 @@ export const useSyncStore = create<SyncState>((set, get) => ({
 
       const result = await fullPush(onProgress);
 
-      set({
-        done: true,
-        percent: 100,
-        stage: result
-          ? `Synced ${result.cards.toLocaleString()} cards, ${result.reviewLogs.toLocaleString()} reviews, ${result.media.toLocaleString()} media`
-          : "Done!",
-      });
+      const msg = result
+        ? result.totalPushed === 0
+          ? "Already up to date"
+          : `Synced ${result.totalPushed.toLocaleString()} changes`
+        : "Done!";
+
+      set({ done: true, percent: 100, stage: msg });
 
       setTimeout(() => {
         set({ syncing: false, done: false, stage: "", percent: 0 });
@@ -72,7 +72,7 @@ export const useSyncStore = create<SyncState>((set, get) => ({
         done: true,
         percent: 100,
         stage: result
-          ? `Downloaded ${result.cards.toLocaleString()} cards, ${result.reviewLogs.toLocaleString()} reviews, ${result.media.toLocaleString()} media`
+          ? `Downloaded ${result.cards.toLocaleString()} cards, ${result.reviewLogs.toLocaleString()} reviews`
           : "Done!",
       });
 
