@@ -2,15 +2,18 @@ import { supabase } from "@/lib/supabase";
 import { get, set, keys } from "idb-keyval";
 import { IDB_MEDIA_PREFIX } from "@/lib/constants";
 
-/**
- * Upload all local media to Supabase Storage.
- * Files are stored under: media/{userId}/{deckId}/{filename}
- */
-export async function pushMediaToCloud(userId: string): Promise<number> {
+export type ProgressCallback = (stage: string, percent: number) => void;
+
+export async function pushMediaToCloud(
+  userId: string,
+  onProgress?: ProgressCallback
+): Promise<number> {
   const allKeys = await keys();
   const mediaKeys = (allKeys as string[]).filter(
     (k) => typeof k === "string" && k.startsWith(IDB_MEDIA_PREFIX)
   );
+
+  if (mediaKeys.length === 0) return 0;
 
   let uploaded = 0;
 
@@ -18,21 +21,13 @@ export async function pushMediaToCloud(userId: string): Promise<number> {
     const data = await get<Uint8Array>(key);
     if (!data) continue;
 
-    // Key format: fluido-media:deckId/filename
     const path = key.replace(`${IDB_MEDIA_PREFIX}:`, "");
     const storagePath = `${userId}/${path}`;
 
-    // Check if already uploaded
-    const { data: existing } = await supabase.storage
-      .from("media")
-      .list(storagePath.split("/").slice(0, -1).join("/"), {
-        search: storagePath.split("/").pop(),
-      });
-
-    if (existing && existing.length > 0) {
-      uploaded++;
-      continue;
-    }
+    onProgress?.(
+      `Uploading media ${uploaded + 1}/${mediaKeys.length}…`,
+      Math.round((uploaded / mediaKeys.length) * 100)
+    );
 
     const { error } = await supabase.storage
       .from("media")
@@ -41,7 +36,7 @@ export async function pushMediaToCloud(userId: string): Promise<number> {
         upsert: true,
       });
 
-    if (error) {
+    if (error && !error.message.includes("already exists")) {
       console.warn(`Failed to upload media ${storagePath}:`, error.message);
     } else {
       uploaded++;
@@ -51,23 +46,27 @@ export async function pushMediaToCloud(userId: string): Promise<number> {
   return uploaded;
 }
 
-/**
- * Download all media for a user from Supabase Storage to local IndexedDB.
- */
-export async function pullMediaFromCloud(userId: string): Promise<number> {
+export async function pullMediaFromCloud(
+  userId: string,
+  onProgress?: ProgressCallback
+): Promise<number> {
   let downloaded = 0;
 
-  // List all files in the user's media folder
   const folders = await listFolders(`${userId}`);
 
   for (const folder of folders) {
     const files = await listFiles(`${userId}/${folder}`);
 
-    for (const file of files) {
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i]!;
       const storagePath = `${userId}/${folder}/${file}`;
       const localKey = `${IDB_MEDIA_PREFIX}:${folder}/${file}`;
 
-      // Skip if already in local storage
+      onProgress?.(
+        `Downloading media ${downloaded + 1}/${files.length}…`,
+        Math.round((downloaded / Math.max(files.length, 1)) * 100)
+      );
+
       const existing = await get(localKey);
       if (existing) {
         downloaded++;
@@ -98,7 +97,6 @@ async function listFolders(prefix: string): Promise<string[]> {
     .list(prefix);
 
   if (error || !data) return [];
-  // Folders have id: null in the listing
   return data
     .filter((item) => item.id === null || !item.metadata)
     .map((item) => item.name);

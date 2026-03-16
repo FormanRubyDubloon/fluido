@@ -1,16 +1,11 @@
 import { useState } from "react";
 import { useAuthStore } from "@/store/auth-store";
-import { fullPush } from "@/sync/index";
-
-export interface SyncProgress {
-  stage: string;
-  percent: number;
-}
+import { fullPush, type ProgressCallback } from "@/sync/index";
 
 export function SyncButton() {
   const user = useAuthStore((s) => s.user);
   const [syncing, setSyncing] = useState(false);
-  const [progress, setProgress] = useState<SyncProgress | null>(null);
+  const [progress, setProgress] = useState<{ stage: string; percent: number } | null>(null);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -20,20 +15,31 @@ export function SyncButton() {
     setSyncing(true);
     setDone(false);
     setError(null);
-    setProgress({ stage: "Preparing…", percent: 0 });
+    setProgress({ stage: "Starting…", percent: 0 });
 
     try {
-      setProgress({ stage: "Uploading decks…", percent: 10 });
-      await fullPush();
-      setProgress({ stage: "Done!", percent: 100 });
+      const onProgress: ProgressCallback = (stage, percent) => {
+        setProgress({ stage, percent });
+      };
+
+      const result = await fullPush(onProgress);
+
+      setProgress({
+        stage: result
+          ? `Synced ${result.cards} cards, ${result.reviewLogs} reviews, ${result.media} media`
+          : "Done!",
+        percent: 100,
+      });
       setDone(true);
+
       setTimeout(() => {
         setSyncing(false);
         setDone(false);
         setProgress(null);
-      }, 1500);
+      }, 2500);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Sync failed");
+      setProgress({ stage: "Failed", percent: 100 });
       setTimeout(() => {
         setSyncing(false);
         setError(null);
@@ -54,7 +60,7 @@ export function SyncButton() {
         title="Sync to cloud"
       >
         <svg
-          className={`w-5 h-5 ${syncing && !done ? "animate-spin" : ""}`}
+          className={`w-5 h-5 ${syncing && !done && !error ? "animate-spin" : ""}`}
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -69,50 +75,40 @@ export function SyncButton() {
       </button>
 
       {syncing && progress && (
-        <SyncPopup progress={progress} done={done} error={error} />
+        <div className="absolute left-0 top-full mt-2 z-50 w-64 p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg">
+          <div className="flex items-center gap-2 mb-2">
+            {error ? (
+              <span className="text-red-500 text-sm">✕</span>
+            ) : done ? (
+              <span className="text-green-500 text-sm">✓</span>
+            ) : (
+              <span className="text-blue-500 text-sm animate-pulse">☁</span>
+            )}
+            <span className={`text-xs font-medium truncate ${
+              error ? "text-red-600 dark:text-red-400" :
+              done ? "text-green-600 dark:text-green-400" :
+              "text-gray-700 dark:text-gray-300"
+            }`}>
+              {error ?? progress.stage}
+            </span>
+          </div>
+
+          <div className="w-full h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all duration-300 ease-out ${
+                error ? "bg-red-500" :
+                done ? "bg-green-500" :
+                "bg-blue-500"
+              }`}
+              style={{ width: `${progress.percent}%` }}
+            />
+          </div>
+
+          <div className="text-[10px] text-gray-400 dark:text-gray-500 mt-1.5 text-right tabular-nums">
+            {progress.percent}%
+          </div>
+        </div>
       )}
-    </div>
-  );
-}
-
-function SyncPopup({
-  progress,
-  done,
-  error,
-}: {
-  progress: SyncProgress;
-  done: boolean;
-  error: string | null;
-}) {
-  return (
-    <div className="absolute left-0 top-full mt-2 z-50 w-56 p-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg">
-      <div className="flex items-center gap-2 mb-2">
-        {error ? (
-          <span className="text-red-500 text-sm">✕</span>
-        ) : done ? (
-          <span className="text-green-500 text-sm">✓</span>
-        ) : (
-          <span className="text-blue-500 text-sm animate-pulse">☁</span>
-        )}
-        <span className={`text-xs font-medium ${
-          error ? "text-red-600 dark:text-red-400" :
-          done ? "text-green-600 dark:text-green-400" :
-          "text-gray-700 dark:text-gray-300"
-        }`}>
-          {error ?? progress.stage}
-        </span>
-      </div>
-
-      <div className="w-full h-1.5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
-        <div
-          className={`h-full rounded-full transition-all duration-300 ease-out ${
-            error ? "bg-red-500" :
-            done ? "bg-green-500" :
-            "bg-blue-500"
-          }`}
-          style={{ width: `${progress.percent}%` }}
-        />
-      </div>
     </div>
   );
 }

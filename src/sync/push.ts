@@ -1,26 +1,55 @@
 import { supabase } from "@/lib/supabase";
 import { getDb } from "@/platform/adapter";
 
-/**
- * Push all local data to Supabase for the given user.
- * Uses upsert so it's safe to call repeatedly.
- */
-export async function pushAllToCloud(userId: string): Promise<void> {
+export type ProgressCallback = (stage: string, percent: number) => void;
+
+export async function pushAllToCloud(
+  userId: string,
+  onProgress?: ProgressCallback
+): Promise<void> {
   const db = getDb();
 
-  // Push in dependency order: decks → note_types → notes → cards → card_states → review_logs
+  const decks = db.exec<Record<string, unknown>>("SELECT * FROM decks");
+  const noteTypes = db.exec<Record<string, unknown>>("SELECT * FROM note_types");
+  const notes = db.exec<Record<string, unknown>>("SELECT * FROM notes");
+  const cards = db.exec<Record<string, unknown>>("SELECT * FROM cards");
+  const cardStates = db.exec<Record<string, unknown>>("SELECT * FROM card_states");
+  const reviewLogs = db.exec<Record<string, unknown>>("SELECT * FROM review_logs");
 
-  await pushTable(userId, "decks", db.exec<Record<string, unknown>>("SELECT * FROM decks"));
-  await pushTable(userId, "note_types", db.exec<Record<string, unknown>>("SELECT * FROM note_types"));
-  await pushTable(userId, "notes", db.exec<Record<string, unknown>>("SELECT * FROM notes"));
-  await pushTable(userId, "cards", db.exec<Record<string, unknown>>("SELECT * FROM cards"));
-  await pushTable(userId, "card_states", db.exec<Record<string, unknown>>("SELECT * FROM card_states"));
-  await pushTable(userId, "review_logs", db.exec<Record<string, unknown>>("SELECT * FROM review_logs"));
+  const totalRows = decks.length + noteTypes.length + notes.length + cards.length + cardStates.length + reviewLogs.length;
+  let uploaded = 0;
+
+  const track = (stage: string, rows: number) => {
+    uploaded += rows;
+    const percent = totalRows > 0 ? Math.round((uploaded / totalRows) * 90) : 0;
+    onProgress?.(stage, percent);
+  };
+
+  onProgress?.(`Uploading ${decks.length} decks…`, 0);
+  await pushTable(userId, "decks", decks);
+  track(`Uploaded ${decks.length} decks`, decks.length);
+
+  onProgress?.(`Uploading ${noteTypes.length} note types…`, uploaded / totalRows * 90);
+  await pushTable(userId, "note_types", noteTypes);
+  track(`Uploaded note types`, noteTypes.length);
+
+  onProgress?.(`Uploading ${notes.length} notes…`, uploaded / totalRows * 90);
+  await pushTable(userId, "notes", notes);
+  track(`Uploaded ${notes.length} notes`, notes.length);
+
+  onProgress?.(`Uploading ${cards.length} cards…`, uploaded / totalRows * 90);
+  await pushTable(userId, "cards", cards);
+  track(`Uploaded ${cards.length} cards`, cards.length);
+
+  onProgress?.(`Uploading card states…`, uploaded / totalRows * 90);
+  await pushTable(userId, "card_states", cardStates);
+  track(`Uploaded card states`, cardStates.length);
+
+  onProgress?.(`Uploading ${reviewLogs.length} review logs…`, uploaded / totalRows * 90);
+  await pushTable(userId, "review_logs", reviewLogs);
+  track(`Uploaded ${reviewLogs.length} reviews`, reviewLogs.length);
 }
 
-/**
- * Push a single card's state and review log after a rating.
- */
 export async function pushCardReview(
   userId: string,
   cardId: string,
@@ -28,7 +57,6 @@ export async function pushCardReview(
 ): Promise<void> {
   const db = getDb();
 
-  // Push updated card
   const cards = db.exec<Record<string, unknown>>(
     "SELECT * FROM cards WHERE id = ?", [cardId]
   );
@@ -36,7 +64,6 @@ export async function pushCardReview(
     await pushTable(userId, "cards", cards);
   }
 
-  // Push updated card state
   const states = db.exec<Record<string, unknown>>(
     "SELECT * FROM card_states WHERE card_id = ?", [cardId]
   );
@@ -44,7 +71,6 @@ export async function pushCardReview(
     await pushTable(userId, "card_states", states);
   }
 
-  // Push new review log
   const logs = db.exec<Record<string, unknown>>(
     "SELECT * FROM review_logs WHERE id = ?", [reviewLogId]
   );
@@ -53,10 +79,6 @@ export async function pushCardReview(
   }
 }
 
-/**
- * Push rows to a Supabase table with user_id attached.
- * Uses upsert (insert with on-conflict update).
- */
 async function pushTable(
   userId: string,
   table: string,
@@ -64,13 +86,11 @@ async function pushTable(
 ): Promise<void> {
   if (rows.length === 0) return;
 
-  // Add user_id to each row
   const withUser = rows.map((row) => ({
     ...row,
     user_id: userId,
   }));
 
-  // Batch in chunks of 500
   for (let i = 0; i < withUser.length; i += 500) {
     const chunk = withUser.slice(i, i + 500);
     const { error } = await supabase

@@ -4,6 +4,8 @@ import { pullAllFromCloud } from "./pull";
 import { pushMediaToCloud, pullMediaFromCloud } from "./media";
 import { getDb } from "@/platform/adapter";
 
+export type ProgressCallback = (stage: string, percent: number) => void;
+
 export interface SyncResult {
   direction: "push" | "pull";
   decks: number;
@@ -18,29 +20,45 @@ export async function getCurrentUserId(): Promise<string | null> {
   return data.session?.user?.id ?? null;
 }
 
-export async function fullPush(): Promise<SyncResult | null> {
+export async function fullPush(onProgress?: ProgressCallback): Promise<SyncResult | null> {
   const userId = await getCurrentUserId();
   if (!userId) return null;
 
-  await pushAllToCloud(userId);
+  onProgress?.("Uploading data…", 0);
+  await pushAllToCloud(userId, (stage, pct) => {
+    onProgress?.(stage, Math.round(pct * 0.7));
+  });
+
+  onProgress?.("Uploading settings…", 70);
   await pushSettings(userId);
-  const media = await pushMediaToCloud(userId);
+
+  onProgress?.("Uploading media…", 75);
+  const media = await pushMediaToCloud(userId, (stage, pct) => {
+    onProgress?.(stage, 75 + Math.round(pct * 0.25));
+  });
 
   const db = getDb();
   const deckCount = db.exec<{ c: number }>("SELECT COUNT(*) as c FROM decks")[0]?.c ?? 0;
   const cardCount = db.exec<{ c: number }>("SELECT COUNT(*) as c FROM cards")[0]?.c ?? 0;
   const logCount = db.exec<{ c: number }>("SELECT COUNT(*) as c FROM review_logs")[0]?.c ?? 0;
 
+  onProgress?.("Done!", 100);
   return { direction: "push", decks: deckCount, cards: cardCount, reviewLogs: logCount, media };
 }
 
-export async function fullPull(): Promise<SyncResult | null> {
+export async function fullPull(onProgress?: ProgressCallback): Promise<SyncResult | null> {
   const userId = await getCurrentUserId();
   if (!userId) return null;
 
+  onProgress?.("Downloading data…", 0);
   const result = await pullAllFromCloud(userId);
-  const media = await pullMediaFromCloud(userId);
 
+  onProgress?.("Downloading media…", 50);
+  const media = await pullMediaFromCloud(userId, (stage, pct) => {
+    onProgress?.(stage, 50 + Math.round(pct * 0.5));
+  });
+
+  onProgress?.("Done!", 100);
   return {
     direction: "pull",
     decks: result.decks,
