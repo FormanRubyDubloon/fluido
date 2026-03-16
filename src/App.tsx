@@ -139,7 +139,7 @@ const handleAuthenticated = async () => {
           onSyncComplete={handleSyncComplete}
         />
       )}
-      {!showSyncBanner && <PersistenceBanner />}
+      {!showSyncBanner && !user && <PersistenceBanner />}
       <Shell
         sidebar={<Sidebar currentView={currentView} onNavigate={(v) => setCurrentView(v as View)} />}
       >
