@@ -1,8 +1,33 @@
 import { supabase } from "@/lib/supabase";
 import { get, set, keys } from "idb-keyval";
 import { IDB_MEDIA_PREFIX } from "@/lib/constants";
+import { getDb } from "@/platform/adapter";
 
 export type ProgressCallback = (stage: string, percent: number) => void;
+
+const SYNCED_MEDIA_KEY = "synced_media_keys";
+
+function getSyncedMediaKeys(): Set<string> {
+  const db = getDb();
+  const rows = db.exec<{ value: string }>(
+    "SELECT value FROM settings WHERE key = ?",
+    [SYNCED_MEDIA_KEY]
+  );
+  if (!rows[0]) return new Set();
+  try {
+    return new Set(JSON.parse(rows[0].value) as string[]);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveSyncedMediaKeys(syncedKeys: Set<string>): void {
+  const db = getDb();
+  db.run(
+    "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+    [SYNCED_MEDIA_KEY, JSON.stringify(Array.from(syncedKeys))]
+  );
+}
 
 export async function pushMediaToCloud(
   userId: string,
@@ -15,9 +40,19 @@ export async function pushMediaToCloud(
 
   if (mediaKeys.length === 0) return 0;
 
+  const alreadySynced = getSyncedMediaKeys();
+  const toUpload = mediaKeys.filter((k) => !alreadySynced.has(k));
+
+  if (toUpload.length === 0) {
+    onProgress?.("Media already synced", 100);
+    return 0;
+  }
+
+  onProgress?.(`Uploading ${toUpload.length} media files…`, 0);
+
   let uploaded = 0;
 
-  for (const key of mediaKeys) {
+  for (const key of toUpload) {
     const data = await get<Uint8Array>(key);
     if (!data) continue;
 
@@ -25,23 +60,38 @@ export async function pushMediaToCloud(
     const storagePath = `${userId}/${path}`;
 
     onProgress?.(
-      `Uploading media ${uploaded + 1}/${mediaKeys.length}…`,
-      Math.round((uploaded / mediaKeys.length) * 100)
+      `Uploading media ${uploaded + 1}/${toUpload.length}…`,
+      Math.round((uploaded / toUpload.length) * 100)
     );
 
     const { error } = await supabase.storage
       .from("media")
       .upload(storagePath, data, {
         contentType: "application/octet-stream",
-        upsert: true,
+        upsert: false,
       });
 
-    if (error && !error.message.includes("already exists")) {
+    if (error) {
+      if (error.message.includes("already exists") || error.message.includes("Duplicate")) {
+        // Already on server — mark as synced
+        alreadySynced.add(key);
+        uploaded++;
+        continue;
+      }
       console.warn(`Failed to upload media ${storagePath}:`, error.message);
     } else {
+      alreadySynced.add(key);
       uploaded++;
     }
+
+    // Save progress every 50 files in case of interruption
+    if (uploaded % 50 === 0) {
+      saveSyncedMediaKeys(alreadySynced);
+    }
   }
+
+  saveSyncedMediaKeys(alreadySynced);
+  getDb().persist();
 
   return uploaded;
 }
@@ -63,8 +113,8 @@ export async function pullMediaFromCloud(
       const localKey = `${IDB_MEDIA_PREFIX}:${folder}/${file}`;
 
       onProgress?.(
-        `Downloading media ${downloaded + 1}/${files.length}…`,
-        Math.round((downloaded / Math.max(files.length, 1)) * 100)
+        `Downloading media ${downloaded + 1}…`,
+        files.length > 0 ? Math.round((i / files.length) * 100) : 0
       );
 
       const existing = await get(localKey);
