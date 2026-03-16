@@ -12,6 +12,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.99.2",
     "dompurify": "^3.3.3",
     "fzstd": "^0.1.1",
     "idb-keyval": "^6.2.2",
@@ -37,6 +38,7 @@
     "tailwindcss": "^4.2.1",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.56.1",
+    "vercel": "^50.32.5",
     "vite": "^8.0.0",
     "vitest": "^4.1.0"
   }

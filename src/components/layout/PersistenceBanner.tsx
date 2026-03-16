@@ -52,15 +52,7 @@ export function PersistenceBanner() {
     }
   }
 
-  async function handleUnlink() {
-    const adapter = getAdapter();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const db = adapter.db as any;
-    if (typeof db.unlinkSaveFile === "function") {
-      await db.unlinkSaveFile();
-      await checkStatus();
-    }
-  }
+
 
   if (dismissed || !status) return null;
 

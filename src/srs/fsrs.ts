@@ -119,8 +119,8 @@ export function createFsrsScheduler(
     ): ScheduleResult {
       const card = toFsrsCard(current);
       const result = f.repeat(card, reviewTime);
-      const scheduled = result[toFsrsRating(rating)];
-      return fromFsrsResult(current.cardId, scheduled.card);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const scheduled = (result as any)[toFsrsRating(rating)];      return fromFsrsResult(current.cardId, scheduled.card);
     },
 
     preview(

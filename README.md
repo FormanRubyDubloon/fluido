@@ -1,52 +1,24 @@
-# Fluido
+# Supabase Sync Files
 
-A spaced repetition flashcard app built with FSRS-5. Import Anki decks, review cards on an optimised schedule.
+## New files (create these):
+- src/lib/supabase.ts — Supabase client singleton
+- src/store/auth-store.ts — Auth state management
+- src/sync/push.ts — Push local data to cloud
+- src/sync/pull.ts — Pull cloud data to local
+- src/sync/media.ts — Upload/download media via Supabase Storage
+- src/sync/index.ts — Sync orchestrator
+- src/components/auth/LoginPage.tsx — Login/signup page
+- src/components/auth/SyncBanner.tsx — Sync status banner
 
-## Quick Start
+## Updated files (replace these):
+- src/import/index.ts — Added fullPush() after import
+- src/store/review-store.ts — Added syncCardReview after each rating
+- src/App.tsx — Added auth gate, sync banner, login flow
 
-```bash
-pnpm install
-pnpm dev
-```
-
-Open [http://localhost:5173](http://localhost:5173).
-
-## Stack
-
-- **React + TypeScript** — UI framework
-- **Vite** — bundler and dev server
-- **Tailwind CSS v4** — styling
-- **Zustand** — state management
-- **sql.js** — SQLite compiled to WASM (runs entirely in-browser)
-- **ts-fsrs** — FSRS-5 spaced repetition scheduling
-- **JSZip** — client-side .apkg extraction
-- **DOMPurify** — HTML sanitisation for Anki card content
-
-## Architecture
-
-The app is a **local-first SPA** with no backend. All data lives in an in-browser SQLite database persisted to IndexedDB. The architecture uses a **platform adapter** pattern so the same code can run in the browser (web), Electron (desktop), and Capacitor (iOS) by swapping only the data layer.
-
-```
-src/
-├── platform/     # Adapter interface + implementations (web, electron, capacitor)
-├── db/           # Schema, migrations, repository queries
-├── import/       # .apkg import pipeline
-├── srs/          # Scheduler interface + FSRS implementation
-├── renderer/     # Card rendering (Anki templates, cloze, future types)
-├── store/        # Zustand stores (decks, review, settings, stats)
-├── components/   # React UI components
-├── hooks/        # Shared hooks (keyboard, audio, persistence)
-└── lib/          # Utilities (IDs, time, constants)
-```
-
-## Scripts
-
-| Command | Description |
-|---|---|
-| `pnpm dev` | Start dev server |
-| `pnpm build` | Production build to `dist/` |
-| `pnpm preview` | Preview production build locally |
-
-## Build Plan
-
-See `Fluido_MVP_Build_Plan.md` for the full phased development plan.
+## Setup:
+1. pnpm add @supabase/supabase-js
+2. Create .env with VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY
+3. Add same env vars to Vercel (Settings → Environment Variables)
+4. Supabase dashboard → Auth → Providers → Email → disable email confirmations
+5. pnpm run build
+6. npx vercel --prod

@@ -5,6 +5,9 @@ import { initDatabase } from "@/db/init";
 import { useSettingsStore } from "@/store/settings-store";
 import { useDeckStore } from "@/store/deck-store";
 import { useReviewStore } from "@/store/review-store";
+import { useAuthStore } from "@/store/auth-store";
+import { isSupabaseConfigured } from "@/lib/supabase";
+import { cloudHasData, localHasData } from "@/sync/index";
 import { Shell } from "@/components/layout/Shell";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { PersistenceBanner } from "@/components/layout/PersistenceBanner";
@@ -12,6 +15,8 @@ import { DeckBrowser } from "@/components/deck/DeckBrowser";
 import { ReviewSession } from "@/components/review/ReviewSession";
 import { StatsPage } from "@/components/stats/StatsPage";
 import { SettingsPanel } from "@/components/settings/SettingsPanel";
+import { LoginPage } from "@/components/auth/LoginPage";
+import { SyncBanner } from "@/components/auth/SyncBanner";
 
 type View = "decks" | "stats" | "settings";
 
@@ -19,11 +24,17 @@ export default function App() {
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentView, setCurrentView] = useState<View>("decks");
+  const [showSyncBanner, setShowSyncBanner] = useState(false);
+  const [syncState, setSyncState] = useState<{ hasLocal: boolean; hasCloud: boolean }>({
+    hasLocal: false,
+    hasCloud: false,
+  });
 
   const loadSettings = useSettingsStore((s) => s.loadSettings);
   const darkMode = useSettingsStore((s) => s.darkMode);
   const loadDecks = useDeckStore((s) => s.loadDecks);
   const { inSession, startSession } = useReviewStore();
+  const { user, loading: authLoading, initialize: initAuth } = useAuthStore();
 
   useEffect(() => {
     async function bootstrap() {
@@ -35,6 +46,11 @@ export default function App() {
         await initDatabase();
         loadSettings();
         loadDecks();
+
+        if (isSupabaseConfigured()) {
+          await initAuth();
+        }
+
         setReady(true);
       } catch (e) {
         console.error("Failed to initialise app:", e);
@@ -43,6 +59,36 @@ export default function App() {
     }
     bootstrap();
   }, []);
+
+  useEffect(() => {
+    if (!user || !ready) return;
+
+    async function checkSync() {
+      const hasLocal = localHasData();
+      const hasCloud = await cloudHasData();
+      setSyncState({ hasLocal, hasCloud });
+      if (hasLocal || hasCloud) {
+        setShowSyncBanner(true);
+      }
+    }
+    checkSync();
+  }, [user, ready]);
+
+  const handleSyncComplete = () => {
+    setShowSyncBanner(false);
+    loadDecks();
+    loadSettings();
+  };
+
+  const handleAuthenticated = async () => {
+    const hasLocal = localHasData();
+    const hasCloud = await cloudHasData();
+    setSyncState({ hasLocal, hasCloud });
+    if (hasLocal || hasCloud) {
+      setShowSyncBanner(true);
+    }
+    loadDecks();
+  };
 
   if (error) {
     return (
@@ -57,7 +103,7 @@ export default function App() {
     );
   }
 
-  if (!ready) {
+  if (!ready || authLoading) {
     return (
       <div className="flex items-center justify-center h-screen bg-white dark:bg-gray-950">
         <div className="text-center">
@@ -66,6 +112,10 @@ export default function App() {
         </div>
       </div>
     );
+  }
+
+  if (isSupabaseConfigured() && !user) {
+    return <LoginPage onAuthenticated={handleAuthenticated} />;
   }
 
   if (inSession) {
@@ -80,8 +130,17 @@ export default function App() {
 
   return (
     <>
-      <PersistenceBanner />
-      <Shell sidebar={<Sidebar currentView={currentView} onNavigate={(v) => setCurrentView(v as View)} />}>
+      {showSyncBanner && (
+        <SyncBanner
+          hasLocalData={syncState.hasLocal}
+          hasCloudData={syncState.hasCloud}
+          onSyncComplete={handleSyncComplete}
+        />
+      )}
+      {!showSyncBanner && <PersistenceBanner />}
+      <Shell
+        sidebar={<Sidebar currentView={currentView} onNavigate={(v) => setCurrentView(v as View)} />}
+      >
         {currentView === "decks" && <DeckBrowser onStartReview={(deckId) => startSession(deckId)} />}
         {currentView === "stats" && <StatsPage />}
         {currentView === "settings" && <SettingsPanel />}

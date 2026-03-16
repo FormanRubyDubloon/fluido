@@ -72,7 +72,6 @@ export const useStatsStore = create<StatsState>((set, get) => ({
     const deckParam = filterDeck ? [filterDeck] : [];
 
     const cardWhere = filterDeck ? " AND c.deck_id = ?" : "";
-    const cardWhereSimple = filterDeck ? " AND deck_id = ?" : "";
 
     // --- Today summary ---
     const todayLogs = db.exec<{ rating: number; elapsed_ms: number }>(

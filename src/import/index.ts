@@ -3,6 +3,7 @@ import { unzipApkg } from "./unzip";
 import { parseAnkiCollection } from "./parser";
 import { mapAndInsert, type MapResult } from "./mapper";
 import { storeMediaFiles } from "./media";
+import { fullPush } from "@/sync/index";
 
 export interface ImportResult {
   decksCreated: number;
@@ -25,6 +26,9 @@ export async function importApkg(buffer: ArrayBuffer): Promise<ImportResult> {
   }
 
   await getDb().persist();
+
+  // Push to cloud in background (non-blocking)
+  fullPush().catch((e) => console.warn("Cloud sync after import failed:", e));
 
   return {
     decksCreated: mapResult.decksCreated,
