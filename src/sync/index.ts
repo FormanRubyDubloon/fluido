@@ -12,19 +12,12 @@ export interface SyncResult {
   media: number;
 }
 
-/**
- * Get the currently authenticated user's ID, or null.
- */
 export async function getCurrentUserId(): Promise<string | null> {
   if (!isSupabaseConfigured()) return null;
   const { data } = await supabase.auth.getSession();
   return data.session?.user?.id ?? null;
 }
 
-/**
- * Full push: send all local data + media to Supabase.
- * Called after import or when user wants to force-sync.
- */
 export async function fullPush(): Promise<SyncResult | null> {
   const userId = await getCurrentUserId();
   if (!userId) return null;
@@ -41,10 +34,6 @@ export async function fullPush(): Promise<SyncResult | null> {
   return { direction: "push", decks: deckCount, cards: cardCount, reviewLogs: logCount, media };
 }
 
-/**
- * Full pull: download all data + media from Supabase to local.
- * Called on login from a new device.
- */
 export async function fullPull(): Promise<SyncResult | null> {
   const userId = await getCurrentUserId();
   if (!userId) return null;
@@ -61,10 +50,6 @@ export async function fullPull(): Promise<SyncResult | null> {
   };
 }
 
-/**
- * Push a single card review to Supabase (called after each rating).
- * Runs in the background — doesn't block the UI.
- */
 export async function syncCardReview(cardId: string, reviewLogId: string): Promise<void> {
   const userId = await getCurrentUserId();
   if (!userId) return;
@@ -73,13 +58,9 @@ export async function syncCardReview(cardId: string, reviewLogId: string): Promi
     await pushCardReview(userId, cardId, reviewLogId);
   } catch (e) {
     console.warn("Background sync failed for card review:", e);
-    // Non-fatal — data is safe locally
   }
 }
 
-/**
- * Push user settings to Supabase.
- */
 async function pushSettings(userId: string): Promise<void> {
   const db = getDb();
   const rows = db.exec<{ key: string; value: string }>("SELECT * FROM settings");
@@ -106,9 +87,6 @@ async function pushSettings(userId: string): Promise<void> {
   }
 }
 
-/**
- * Check if the cloud has any data for this user.
- */
 export async function cloudHasData(): Promise<boolean> {
   const userId = await getCurrentUserId();
   if (!userId) return false;
@@ -123,9 +101,6 @@ export async function cloudHasData(): Promise<boolean> {
   return (data?.length ?? 0) > 0;
 }
 
-/**
- * Check if local has any data.
- */
 export function localHasData(): boolean {
   const db = getDb();
   const count = db.exec<{ c: number }>("SELECT COUNT(*) as c FROM decks")[0]?.c ?? 0;
