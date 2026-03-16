@@ -17,6 +17,7 @@ import { StatsPage } from "@/components/stats/StatsPage";
 import { SettingsPanel } from "@/components/settings/SettingsPanel";
 import { LoginPage } from "@/components/auth/LoginPage";
 import { SyncBanner } from "@/components/auth/SyncBanner";
+import { SyncCheckModal } from "@/components/review/SyncCheckModal";
 
 type View = "decks" | "stats" | "settings";
 
@@ -29,6 +30,7 @@ export default function App() {
     hasLocal: false,
     hasCloud: false,
   });
+  const [reviewPendingDeckId, setReviewPendingDeckId] = useState<string | null>(null);
 
   const loadSettings = useSettingsStore((s) => s.loadSettings);
   const darkMode = useSettingsStore((s) => s.darkMode);
@@ -60,7 +62,7 @@ export default function App() {
     bootstrap();
   }, []);
 
-useEffect(() => {
+  useEffect(() => {
     if (!user || !ready) return;
 
     async function checkSync() {
@@ -80,12 +82,10 @@ useEffect(() => {
     loadSettings();
   };
 
-const handleAuthenticated = async () => {
+  const handleAuthenticated = async () => {
     const hasLocal = localHasData();
     const hasCloud = await cloudHasData();
     setSyncState({ hasLocal, hasCloud });
-    // Only show banner if there's a conflict to resolve
-    // (data in one place but not the other)
     if (hasLocal !== hasCloud) {
       setShowSyncBanner(true);
     }
@@ -143,7 +143,23 @@ const handleAuthenticated = async () => {
       <Shell
         sidebar={<Sidebar currentView={currentView} onNavigate={(v) => setCurrentView(v as View)} />}
       >
-        {currentView === "decks" && <DeckBrowser onStartReview={(deckId) => startSession(deckId)} />}
+        {currentView === "decks" && (
+          <DeckBrowser onStartReview={(deckId) => {
+            if (user) {
+              setReviewPendingDeckId(deckId);
+            } else {
+              startSession(deckId);
+            }
+          }} />
+        )}
+        {reviewPendingDeckId && (
+          <SyncCheckModal onReady={() => {
+            const deckId = reviewPendingDeckId;
+            setReviewPendingDeckId(null);
+            loadDecks();
+            startSession(deckId);
+          }} />
+        )}
         {currentView === "stats" && <StatsPage />}
         {currentView === "settings" && <SettingsPanel />}
       </Shell>
