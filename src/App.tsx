@@ -60,14 +60,14 @@ export default function App() {
     bootstrap();
   }, []);
 
-  useEffect(() => {
+useEffect(() => {
     if (!user || !ready) return;
 
     async function checkSync() {
       const hasLocal = localHasData();
       const hasCloud = await cloudHasData();
       setSyncState({ hasLocal, hasCloud });
-      if (hasLocal || hasCloud) {
+      if (hasLocal !== hasCloud) {
         setShowSyncBanner(true);
       }
     }
@@ -80,11 +80,13 @@ export default function App() {
     loadSettings();
   };
 
-  const handleAuthenticated = async () => {
+const handleAuthenticated = async () => {
     const hasLocal = localHasData();
     const hasCloud = await cloudHasData();
     setSyncState({ hasLocal, hasCloud });
-    if (hasLocal || hasCloud) {
+    // Only show banner if there's a conflict to resolve
+    // (data in one place but not the other)
+    if (hasLocal !== hasCloud) {
       setShowSyncBanner(true);
     }
     loadDecks();
