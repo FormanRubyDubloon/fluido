@@ -1,14 +1,12 @@
 import { create } from "zustand";
 import { buildQueue, type QueueCard } from "@/srs/queue";
-import { commitRating, undoRating, type UndoSnapshot } from "@/srs/rating";
-import { getDb } from "@/platform/adapter";
-import { syncCardReview } from "@/sync/index";
+import { computeRating, revertRating, type UndoSnapshot } from "@/srs/rating";
 import type { Rating } from "@/srs/types";
 
 interface SessionStats {
   cardsReviewed: number;
   ratingsGiven: Record<Rating, number>;
-  startedAt: number; // timestamp ms
+  startedAt: number;
 }
 
 interface ReviewState {
@@ -17,13 +15,13 @@ interface ReviewState {
   queue: QueueCard[];
   currentIndex: number;
   isRevealed: boolean;
-  cardStartTime: number; // when current card was shown
+  cardStartTime: number;
   sessionStats: SessionStats;
   lastUndo: UndoSnapshot | null;
-  /** Set to true once session completes */
   sessionComplete: boolean;
+  loading: boolean;
 
-  startSession: (deckId: string) => void;
+  startSession: (deckId: string, newCardsPerDay: number) => Promise<void>;
   endSession: () => void;
   revealCard: () => void;
   rateCard: (rating: Rating) => void;
@@ -37,27 +35,39 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
   currentIndex: 0,
   isRevealed: false,
   cardStartTime: Date.now(),
-  sessionStats: { cardsReviewed: 0, ratingsGiven: { 1: 0, 2: 0, 3: 0, 4: 0 }, startedAt: 0 },
+  sessionStats: {
+    cardsReviewed: 0,
+    ratingsGiven: { 1: 0, 2: 0, 3: 0, 4: 0 },
+    startedAt: 0,
+  },
   lastUndo: null,
   sessionComplete: false,
+  loading: false,
 
-  startSession: (deckId) => {
-    const queue = buildQueue(deckId);
-    set({
-      activeDeckId: deckId,
-      inSession: true,
-      queue,
-      currentIndex: 0,
-      isRevealed: false,
-      cardStartTime: Date.now(),
-      sessionStats: {
-        cardsReviewed: 0,
-        ratingsGiven: { 1: 0, 2: 0, 3: 0, 4: 0 },
-        startedAt: Date.now(),
-      },
-      lastUndo: null,
-      sessionComplete: false,
-    });
+  startSession: async (deckId, newCardsPerDay) => {
+    set({ loading: true });
+    try {
+      const queue = await buildQueue(deckId, newCardsPerDay);
+      set({
+        activeDeckId: deckId,
+        inSession: true,
+        queue,
+        currentIndex: 0,
+        isRevealed: false,
+        cardStartTime: Date.now(),
+        sessionStats: {
+          cardsReviewed: 0,
+          ratingsGiven: { 1: 0, 2: 0, 3: 0, 4: 0 },
+          startedAt: Date.now(),
+        },
+        lastUndo: null,
+        sessionComplete: false,
+        loading: false,
+      });
+    } catch (e) {
+      console.error("Failed to start session:", e);
+      set({ loading: false });
+    }
   },
 
   endSession: () => {
@@ -77,23 +87,16 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
   },
 
   rateCard: (rating) => {
-    const { queue, currentIndex, cardStartTime, sessionStats, activeDeckId } = get();
+    const { queue, currentIndex, cardStartTime, sessionStats, activeDeckId } =
+      get();
     const card = queue[currentIndex];
     if (!card || !activeDeckId) return;
 
     const elapsedMs = Date.now() - cardStartTime;
 
-    // Commit to database
-    const result = commitRating(card, rating, elapsedMs);
-    const snapshot = result.snapshot;
+    // Compute new state and persist (optimistic — fires Supabase write in background)
+    const result = computeRating(card, rating, elapsedMs);
 
-    // Persist
-    getDb().persist();
-
-    // Background sync to cloud (non-blocking)
-syncCardReview(card.cardId, result.snapshot.reviewLogId);
-
-    // Update stats
     const newStats = {
       ...sessionStats,
       cardsReviewed: sessionStats.cardsReviewed + 1,
@@ -106,11 +109,10 @@ syncCardReview(card.cardId, result.snapshot.reviewLogId);
     const nextIndex = currentIndex + 1;
 
     if (nextIndex >= queue.length) {
-      // Session complete
       set({
         sessionStats: newStats,
         isRevealed: false,
-        lastUndo: snapshot,
+        lastUndo: result.snapshot,
         sessionComplete: true,
       });
     } else {
@@ -119,7 +121,7 @@ syncCardReview(card.cardId, result.snapshot.reviewLogId);
         isRevealed: false,
         cardStartTime: Date.now(),
         sessionStats: newStats,
-        lastUndo: snapshot,
+        lastUndo: result.snapshot,
       });
     }
   },
@@ -128,16 +130,13 @@ syncCardReview(card.cardId, result.snapshot.reviewLogId);
     const { lastUndo, currentIndex, sessionStats, sessionComplete } = get();
     if (!lastUndo) return;
 
-    // Revert the database
-    undoRating(lastUndo);
-    getDb().persist();
+    // Revert in Supabase (async, non-blocking for UI)
+    revertRating(lastUndo).catch((e) =>
+      console.error("Failed to undo review:", e)
+    );
 
-    // Step back
     const prevIndex = sessionComplete ? currentIndex : currentIndex - 1;
 
-    // Figure out which rating to decrement
-    // We need to look at the review log we just deleted — rating is in the snapshot
-    // Actually we don't store the rating in the snapshot. Just decrement total.
     set({
       currentIndex: Math.max(0, prevIndex),
       isRevealed: false,

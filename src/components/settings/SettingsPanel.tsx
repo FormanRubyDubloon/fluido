@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { useSettingsStore } from "@/store/settings-store";
-import { getFiles, getAdapter, getDb } from "@/platform/adapter";
 import { detectLanguagesFromCards, getAvailableFonts } from "@/lib/fonts";
 
 export function SettingsPanel() {
@@ -39,14 +38,8 @@ export function SettingsPanel() {
       </Section>
 
       <Section title="FSRS Parameters">
-        <NumberRow label="Desired retention" description="Target probability of remembering a card at review time (0.70–0.99)" value={Math.round(requestRetention * 100)} min={70} max={99} onChange={(v) => setRequestRetention(v / 100)} suffix="%" />
+        <NumberRow label="Desired retention" description="Target probability of remembering a card at review time (0.70-0.99)" value={Math.round(requestRetention * 100)} min={70} max={99} onChange={(v) => setRequestRetention(v / 100)} suffix="%" />
         <WeightsRow label="Custom weights" description="Paste optimised FSRS weights from Anki. Leave empty for defaults." value={fsrsWeights} onChange={setFsrsWeights} />
-      </Section>
-
-      <Section title="Data">
-        <SaveFileRow />
-        <ExportRow />
-        <ResetMediaSyncRow />
       </Section>
     </div>
   );
@@ -70,19 +63,19 @@ function FontSettings({
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const detected = detectLanguagesFromCards();
-    setLanguages(detected);
-
-    const cache: Record<string, string[]> = {};
-    for (const lang of detected) {
-      cache[lang.id] = getAvailableFonts(lang.id);
-    }
-    setFontsCache(cache);
-    setLoading(false);
+    detectLanguagesFromCards().then((detected) => {
+      setLanguages(detected);
+      const cache: Record<string, string[]> = {};
+      for (const lang of detected) {
+        cache[lang.id] = getAvailableFonts(lang.id);
+      }
+      setFontsCache(cache);
+      setLoading(false);
+    });
   }, []);
 
   if (loading) {
-    return <p className="text-sm text-gray-400">Detecting languages…</p>;
+    return <p className="text-sm text-gray-400">Detecting languages...</p>;
   }
 
   if (languages.length === 0) {
@@ -277,162 +270,6 @@ function WeightsRow({ label, description, value, onChange }: { label: string; de
           Reset to defaults
         </button>
       )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Data section
-// ---------------------------------------------------------------------------
-
-function SaveFileRow() {
-  const [status, setStatus] = useState<{
-    linked: boolean;
-    name: string | null;
-    needsPermission: boolean;
-  } | null>(null);
-
-  useEffect(() => {
-    checkStatus();
-  }, []);
-
-  async function checkStatus() {
-    const adapter = getAdapter();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const db = adapter.db as any;
-    if (typeof db.getSaveFileStatus === "function") {
-      setStatus(await db.getSaveFileStatus());
-    }
-  }
-
-  async function handleLink() {
-    const adapter = getAdapter();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const db = adapter.db as any;
-    if (typeof db.linkSaveFile === "function") {
-      try {
-        await db.linkSaveFile();
-        await checkStatus();
-      } catch {
-        // Cancelled
-      }
-    }
-  }
-
-  async function handleUnlink() {
-    const adapter = getAdapter();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const db = adapter.db as any;
-    if (typeof db.unlinkSaveFile === "function") {
-      await db.unlinkSaveFile();
-      await checkStatus();
-    }
-  }
-
-  return (
-    <div className="py-2">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div>
-          <div className="text-sm font-medium">Save file</div>
-          <div className="text-xs text-gray-500 dark:text-gray-400">
-            {status?.linked
-              ? `Auto-saving to ${status.name}`
-              : "Link a file on disk to auto-save your database"}
-          </div>
-        </div>
-        {status?.linked ? (
-          <button
-            onClick={handleUnlink}
-            className="px-4 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700
-                       hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors shrink-0
-                       text-red-600 dark:text-red-400"
-          >
-            Unlink
-          </button>
-        ) : (
-          <button
-            onClick={handleLink}
-            className="px-4 py-2 text-sm rounded-lg bg-blue-600 text-white font-medium
-                       hover:bg-blue-700 transition-colors shrink-0"
-          >
-            Choose file
-          </button>
-        )}
-      </div>
-      {status?.linked && (
-        <p className="text-xs text-green-600 dark:text-green-400 mt-1">
-          ✓ Database auto-saves after every review
-        </p>
-      )}
-    </div>
-  );
-}
-
-function ExportRow() {
-  const [exporting, setExporting] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-
-  const handleExport = async () => {
-    setExporting(true);
-    setMessage(null);
-    try {
-      await getFiles().exportBackup();
-      setMessage("Backup downloaded");
-    } catch (e) {
-      setMessage(e instanceof Error ? e.message : "Export failed");
-    } finally {
-      setExporting(false);
-    }
-  };
-
-  return (
-    <div className="py-2">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div>
-          <div className="text-sm font-medium">Export backup</div>
-          <div className="text-xs text-gray-500 dark:text-gray-400">Download your database as a file for safekeeping</div>
-        </div>
-        <button
-          onClick={handleExport}
-          disabled={exporting}
-          className="px-4 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50 shrink-0"
-        >
-          {exporting ? "Exporting…" : "Export"}
-        </button>
-      </div>
-      {message && <p className="text-xs mt-2 text-gray-500 dark:text-gray-400">{message}</p>}
-    </div>
-  );
-}
-
-function ResetMediaSyncRow() {
-  const [done, setDone] = useState(false);
-
-  const handleReset = () => {
-    const db = getDb();
-    db.run("DELETE FROM settings WHERE key = 'synced_media_keys'");
-    db.persist();
-    setDone(true);
-  };
-
-  return (
-    <div className="py-2">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div>
-          <div className="text-sm font-medium">Reset media sync</div>
-          <div className="text-xs text-gray-500 dark:text-gray-400">
-            Clear the media sync cache so files re-upload on next sync
-          </div>
-        </div>
-        <button
-          onClick={handleReset}
-          disabled={done}
-          className="px-4 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700
-                     hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50 shrink-0"
-        >
-          {done ? "Cleared" : "Reset"}
-        </button>
-      </div>
     </div>
   );
 }

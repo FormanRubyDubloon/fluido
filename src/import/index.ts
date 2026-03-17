@@ -1,9 +1,9 @@
-import { getDb } from "@/platform/adapter";
 import { unzipApkg } from "./unzip";
 import { parseAnkiCollection } from "./parser";
-import { mapAndInsert, type MapResult } from "./mapper";
+import { mapCollection, type MapResult } from "./mapper";
 import { storeMediaFiles } from "./media";
-import { forceFullPush } from "@/sync/index";
+import { getExistingSourceIds, batchUpsert } from "@/lib/queries";
+import { supabase } from "@/lib/supabase";
 
 export interface ImportResult {
   decksCreated: number;
@@ -18,25 +18,54 @@ export interface ImportResult {
 export async function importApkg(buffer: ArrayBuffer): Promise<ImportResult> {
   const contents = await unzipApkg(buffer);
   const collection = await parseAnkiCollection(contents.collectionBinary);
-  const mapResult: MapResult = mapAndInsert(collection);
 
+  // Fetch existing source IDs for dedup
+  const existingSourceIds = await getExistingSourceIds();
+
+  // Map Anki entities to Fluido row arrays
+  const mapped: MapResult = mapCollection(collection, existingSourceIds);
+
+  // Get user_id for RLS
+  const { data: { session } } = await supabase.auth.getSession();
+  const userId = session?.user?.id;
+  if (!userId) throw new Error("Not authenticated");
+
+  const withUser = (rows: Record<string, unknown>[]) =>
+    rows.map((r) => ({ ...r, user_id: userId }));
+
+  // Insert into Supabase in dependency order
+  if (mapped.decks.length > 0) {
+    await batchUpsert("decks", withUser(mapped.decks));
+  }
+  if (mapped.noteTypes.length > 0) {
+    await batchUpsert("note_types", withUser(mapped.noteTypes));
+  }
+  if (mapped.notes.length > 0) {
+    await batchUpsert("notes", withUser(mapped.notes));
+  }
+  if (mapped.cards.length > 0) {
+    await batchUpsert("cards", withUser(mapped.cards));
+  }
+  if (mapped.cardStates.length > 0) {
+    await batchUpsert("card_states", withUser(mapped.cardStates), "card_id");
+  }
+  if (mapped.reviewLogs.length > 0) {
+    await batchUpsert("review_logs", withUser(mapped.reviewLogs));
+  }
+
+  // Upload media directly to Supabase Storage
   let mediaStored = 0;
   if (contents.mediaFiles.size > 0) {
     mediaStored = await storeMediaFiles("shared", contents.mediaFiles);
   }
 
-  await getDb().persist();
-
-  // Force full push after import (non-blocking)
-  forceFullPush().catch((e) => console.warn("Cloud sync after import failed:", e));
-
   return {
-    decksCreated: mapResult.decksCreated,
-    noteTypesCreated: mapResult.noteTypesCreated,
-    notesCreated: mapResult.notesCreated,
-    cardsCreated: mapResult.cardsCreated,
-    notesSkipped: mapResult.notesSkipped,
+    decksCreated: mapped.decksCreated,
+    noteTypesCreated: mapped.noteTypesCreated,
+    notesCreated: mapped.notesCreated,
+    cardsCreated: mapped.cardsCreated,
+    notesSkipped: mapped.notesSkipped,
     mediaStored,
-    reviewLogsImported: mapResult.reviewLogsImported,
+    reviewLogsImported: mapped.reviewLogsImported,
   };
 }

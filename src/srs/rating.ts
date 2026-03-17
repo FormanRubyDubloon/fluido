@@ -1,6 +1,6 @@
-import { getDb } from "@/platform/adapter";
 import { newId } from "@/lib/ids";
 import { now } from "@/lib/time";
+import { commitReview, undoReview } from "@/lib/queries";
 import { createFsrsScheduler } from "./fsrs";
 import type { Rating } from "./types";
 import type { QueueCard } from "./queue";
@@ -33,12 +33,11 @@ export interface RatingResult {
   };
 }
 
-export function commitRating(
+export function computeRating(
   card: QueueCard,
   rating: Rating,
   elapsedMs: number
 ): RatingResult {
-  const db = getDb();
   const scheduler = createFsrsScheduler();
   const reviewTime = new Date();
   const timestamp = now();
@@ -80,45 +79,29 @@ export function commitRating(
     actualDays = (reviewTime.getTime() - last) / (1000 * 60 * 60 * 24);
   }
 
-  db.transaction(() => {
-    db.run(
-      `UPDATE card_states
-       SET difficulty = ?, stability = ?, due = ?, interval = ?,
-           reps = ?, lapses = ?, last_review = ?, updated_at = ?
-       WHERE card_id = ?`,
-      [
-        result.state.difficulty,
-        result.state.stability,
-        result.state.due,
-        result.state.interval,
-        result.state.reps,
-        result.state.lapses,
-        reviewTime.toISOString(),
-        timestamp,
-        card.cardId,
-      ]
-    );
-
-    db.run(
-      `UPDATE cards SET card_type = ?, updated_at = ? WHERE id = ?`,
-      [result.cardType, timestamp, card.cardId]
-    );
-
-    db.run(
-      `INSERT INTO review_logs (id, card_id, rating, elapsed_ms, review_time, scheduled_days, actual_days, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        reviewLogId,
-        card.cardId,
-        rating,
-        elapsedMs,
-        reviewTime.toISOString(),
-        result.state.interval,
-        actualDays,
-        timestamp,
-      ]
-    );
-  });
+  // Persist to Supabase (fire-and-forget for optimistic UI)
+  commitReview({
+    cardId: card.cardId,
+    newCardType: result.cardType,
+    newState: {
+      difficulty: result.state.difficulty,
+      stability: result.state.stability,
+      due: result.state.due,
+      interval: result.state.interval,
+      reps: result.state.reps,
+      lapses: result.state.lapses,
+    },
+    reviewLog: {
+      id: reviewLogId,
+      card_id: card.cardId,
+      rating,
+      elapsed_ms: elapsedMs,
+      review_time: reviewTime.toISOString(),
+      scheduled_days: result.state.interval,
+      actual_days: actualDays,
+      created_at: timestamp,
+    },
+  }).catch((e) => console.error("Failed to persist review:", e));
 
   return {
     snapshot,
@@ -134,34 +117,11 @@ export function commitRating(
   };
 }
 
-export function undoRating(snapshot: UndoSnapshot): void {
-  const db = getDb();
-  const timestamp = now();
-
-  db.transaction(() => {
-    db.run(
-      `UPDATE card_states
-       SET difficulty = ?, stability = ?, due = ?, interval = ?,
-           reps = ?, lapses = ?, last_review = ?, updated_at = ?
-       WHERE card_id = ?`,
-      [
-        snapshot.previousState.difficulty,
-        snapshot.previousState.stability,
-        snapshot.previousState.due,
-        snapshot.previousState.interval,
-        snapshot.previousState.reps,
-        snapshot.previousState.lapses,
-        snapshot.previousState.lastReview,
-        timestamp,
-        snapshot.cardId,
-      ]
-    );
-
-    db.run(
-      `UPDATE cards SET card_type = ?, updated_at = ? WHERE id = ?`,
-      [snapshot.previousCardType, timestamp, snapshot.cardId]
-    );
-
-    db.run("DELETE FROM review_logs WHERE id = ?", [snapshot.reviewLogId]);
-  });
+export async function revertRating(snapshot: UndoSnapshot): Promise<void> {
+  await undoReview(
+    snapshot.cardId,
+    snapshot.previousCardType,
+    snapshot.previousState,
+    snapshot.reviewLogId
+  );
 }

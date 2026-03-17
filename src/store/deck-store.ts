@@ -1,32 +1,29 @@
 import { create } from "zustand";
 import {
-  getAllDecks,
-  getDeckCardCounts,
-  type DeckRow,
-  type DeckCardCounts,
-} from "@/db/repository";
-
-export interface DeckWithCounts extends DeckRow {
-  counts: DeckCardCounts;
-}
+  getAllDecksWithCounts,
+  type DeckWithCounts,
+} from "@/lib/queries";
 
 interface DeckState {
   decks: DeckWithCounts[];
   loading: boolean;
-  loadDecks: () => void;
+  loadDecks: () => Promise<void>;
 }
+
+export type { DeckWithCounts };
 
 export const useDeckStore = create<DeckState>((set) => ({
   decks: [],
   loading: false,
 
-  loadDecks: () => {
+  loadDecks: async () => {
     set({ loading: true });
-    const rows = getAllDecks();
-    const decks: DeckWithCounts[] = rows.map((row) => ({
-      ...row,
-      counts: getDeckCardCounts(row.id),
-    }));
-    set({ decks, loading: false });
+    try {
+      const decks = await getAllDecksWithCounts();
+      set({ decks, loading: false });
+    } catch (e) {
+      console.error("Failed to load decks:", e);
+      set({ loading: false });
+    }
   },
 }));
