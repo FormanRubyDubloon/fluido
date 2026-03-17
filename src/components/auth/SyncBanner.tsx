@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { fullPush, fullPull, type SyncResult } from "@/sync/index";
+import { fullSync, fullPull, type SyncResult } from "@/sync/index";
 
 interface SyncBannerProps {
   hasLocalData: boolean;
@@ -20,7 +20,7 @@ export function SyncBanner({
     setSyncing(true);
     setError(null);
     try {
-      const r = await fullPush();
+      const r = await fullSync();
       setResult(r);
       setTimeout(onSyncComplete, 2000);
     } catch (e) {
@@ -82,7 +82,6 @@ export function SyncBanner({
     );
   }
 
-  // Both have data — ask user what to do
   if (hasLocalData && hasCloudData) {
     return (
       <div className="flex items-center gap-3 px-4 py-3 bg-amber-50 dark:bg-amber-950/50 border-b border-amber-200 dark:border-amber-800 text-sm flex-wrap">
@@ -109,7 +108,6 @@ export function SyncBanner({
     );
   }
 
-  // Only local data — offer to push
   if (hasLocalData && !hasCloudData) {
     return (
       <div className="flex items-center gap-3 px-4 py-3 bg-blue-50 dark:bg-blue-950/50 border-b border-blue-200 dark:border-blue-800 text-sm">
@@ -135,7 +133,6 @@ export function SyncBanner({
     );
   }
 
-  // Only cloud data — offer to pull
   if (!hasLocalData && hasCloudData) {
     return (
       <div className="flex items-center gap-3 px-4 py-3 bg-blue-50 dark:bg-blue-950/50 border-b border-blue-200 dark:border-blue-800 text-sm">
@@ -161,6 +158,5 @@ export function SyncBanner({
     );
   }
 
-  // No data anywhere — nothing to sync
   return null;
 }
