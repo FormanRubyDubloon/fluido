@@ -124,9 +124,6 @@ export async function renameDeck(id: string, name: string): Promise<void> {
 }
 
 export async function deleteDeck(id: string): Promise<void> {
-  // Delete in dependency order: review_logs → card_states → cards → notes (orphaned) → note_types (orphaned) → deck
-  // Use Supabase's cascading or manual deletes
-
   // Get card IDs for this deck
   const { data: cards } = await supabase
     .from("cards")
@@ -135,13 +132,12 @@ export async function deleteDeck(id: string): Promise<void> {
   const cardIds = (cards ?? []).map((c) => c.id);
 
   if (cardIds.length > 0) {
-    await supabase.from("review_logs").delete().in("card_id", cardIds);
-    await supabase.from("card_states").delete().in("card_id", cardIds);
+    await batchDelete("review_logs", "card_id", cardIds);
+    await batchDelete("card_states", "card_id", cardIds);
     await supabase.from("cards").delete().eq("deck_id", id);
   }
 
   // Clean up orphaned notes and note_types
-  // Notes with no remaining cards
   const { data: usedNoteIds } = await supabase
     .from("cards")
     .select("note_id");
@@ -152,10 +148,9 @@ export async function deleteDeck(id: string): Promise<void> {
     .filter((n) => !usedSet.has(n.id))
     .map((n) => n.id);
   if (orphanedNoteIds.length > 0) {
-    await supabase.from("notes").delete().in("id", orphanedNoteIds);
+    await batchDelete("notes", "id", orphanedNoteIds);
   }
 
-  // Note types with no remaining notes
   const { data: usedNtIds } = await supabase
     .from("notes")
     .select("note_type_id");
@@ -166,7 +161,7 @@ export async function deleteDeck(id: string): Promise<void> {
     .filter((nt) => !usedNtSet.has(nt.id))
     .map((nt) => nt.id);
   if (orphanedNtIds.length > 0) {
-    await supabase.from("note_types").delete().in("id", orphanedNtIds);
+    await batchDelete("note_types", "id", orphanedNtIds);
   }
 
   await supabase.from("decks").delete().eq("id", id);
@@ -183,21 +178,25 @@ export async function resetDeckProgress(id: string): Promise<void> {
 
   if (cardIds.length === 0) return;
 
-  await supabase.from("review_logs").delete().in("card_id", cardIds);
+  await batchDelete("review_logs", "card_id", cardIds);
 
-  await supabase
-    .from("card_states")
-    .update({
-      difficulty: 0,
-      stability: 0,
-      due: nowIso,
-      interval: 0,
-      reps: 0,
-      lapses: 0,
-      last_review: null,
-      updated_at: nowIso,
-    })
-    .in("card_id", cardIds);
+  // Batch the update too
+  for (let i = 0; i < cardIds.length; i += IN_BATCH) {
+    const chunk = cardIds.slice(i, i + IN_BATCH);
+    await supabase
+      .from("card_states")
+      .update({
+        difficulty: 0,
+        stability: 0,
+        due: nowIso,
+        interval: 0,
+        reps: 0,
+        lapses: 0,
+        last_review: null,
+        updated_at: nowIso,
+      })
+      .in("card_id", chunk);
+  }
 
   await supabase
     .from("cards")
@@ -762,6 +761,20 @@ export async function sampleNoteFields(
 // ---------------------------------------------------------------------------
 
 const BATCH_SIZE = 2000;
+
+/** Max IDs per .in() filter to avoid URL length limits */
+const IN_BATCH = 200;
+
+async function batchDelete(
+  table: string,
+  column: string,
+  ids: string[]
+): Promise<void> {
+  for (let i = 0; i < ids.length; i += IN_BATCH) {
+    const chunk = ids.slice(i, i + IN_BATCH);
+    await supabase.from(table).delete().in(column, chunk);
+  }
+}
 
 export async function batchUpsert(
   table: string,
