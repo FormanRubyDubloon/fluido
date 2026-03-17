@@ -360,44 +360,28 @@ export async function getNoteType(
 export async function getNoteTypesForDeck(
   deckId: string
 ): Promise<NoteTypeRow[]> {
-  const { data, error } = await supabase
+  // Two queries: get note_type_ids from cards, then fetch note_types
+  const { data: noteTypeIds } = await supabase
+    .from("cards")
+    .select("notes!inner(note_type_id)")
+    .eq("deck_id", deckId);
+
+  const ids = [
+    ...new Set(
+      (noteTypeIds ?? []).map(
+        (row: Record<string, unknown>) =>
+          (row.notes as { note_type_id: string }).note_type_id
+      )
+    ),
+  ];
+
+  if (ids.length === 0) return [];
+
+  const { data: nts } = await supabase
     .from("note_types")
-    .select("id, name, card_templates")
-    .in(
-      "id",
-      supabase
-        .from("cards")
-        .select("notes!inner(note_type_id)")
-        .eq("deck_id", deckId)
-    );
-
-  // Fallback: if the above doesn't work with PostgREST subqueries,
-  // do two queries
-  if (error) {
-    const { data: noteTypeIds } = await supabase
-      .from("cards")
-      .select("notes!inner(note_type_id)")
-      .eq("deck_id", deckId);
-
-    const ids = [
-      ...new Set(
-        (noteTypeIds ?? []).map(
-          (row: Record<string, unknown>) =>
-            (row.notes as { note_type_id: string }).note_type_id
-        )
-      ),
-    ];
-
-    if (ids.length === 0) return [];
-
-    const { data: nts } = await supabase
-      .from("note_types")
-      .select("*")
-      .in("id", ids);
-    return nts ?? [];
-  }
-
-  return data ?? [];
+    .select("*")
+    .in("id", ids);
+  return (nts ?? []) as NoteTypeRow[];
 }
 
 export async function updateNoteTypeTemplates(
@@ -612,7 +596,8 @@ async function fetchCardCounts(
       counts.suspended++;
       continue;
     }
-    const cs = c.card_states as { interval: number } | null;
+    const csRaw = c.card_states as { interval: number } | { interval: number }[] | null;
+    const cs = Array.isArray(csRaw) ? csRaw[0] ?? null : csRaw;
     if (c.card_type === "new") counts.new++;
     else if (
       c.card_type === "learning" ||
