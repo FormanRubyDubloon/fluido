@@ -67,3 +67,8 @@ body {
 .fluido-audio-btn:active {
   background: rgba(59, 130, 246, 0.3);
 }
+
+.fluido-audio-btn-disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
