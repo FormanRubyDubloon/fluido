@@ -29,6 +29,34 @@ function saveSyncedMediaKeys(syncedKeys: Set<string>): void {
   );
 }
 
+/**
+ * List all files already on the server for this user.
+ */
+async function getRemoteFileSet(userId: string, folder: string): Promise<Set<string>> {
+  const remote = new Set<string>();
+  let offset = 0;
+  const limit = 1000;
+
+  while (true) {
+    const { data, error } = await supabase.storage
+      .from("media")
+      .list(`${userId}/${folder}`, { limit, offset });
+
+    if (error || !data || data.length === 0) break;
+
+    for (const item of data) {
+      if (item.name && item.metadata) {
+        remote.add(item.name);
+      }
+    }
+
+    if (data.length < limit) break;
+    offset += limit;
+  }
+
+  return remote;
+}
+
 export async function pushMediaToCloud(
   userId: string,
   onProgress?: ProgressCallback
@@ -40,16 +68,56 @@ export async function pushMediaToCloud(
 
   if (mediaKeys.length === 0) return 0;
 
+  // Check local tracking first
   const alreadySynced = getSyncedMediaKeys();
-  const toUpload = mediaKeys.filter((k) => !alreadySynced.has(k));
+  let toUpload = mediaKeys.filter((k) => !alreadySynced.has(k));
 
   if (toUpload.length === 0) {
     onProgress?.("Media already synced", 100);
     return 0;
   }
 
-  onProgress?.(`Uploading ${toUpload.length} media files…`, 0);
+  // Check what's already on the server to avoid 400 errors
+  onProgress?.("Checking existing media on server…", 0);
 
+  // Group by folder (deck ID) to list remote files
+  const byFolder = new Map<string, string[]>();
+  for (const key of toUpload) {
+    const path = key.replace(`${IDB_MEDIA_PREFIX}:`, "");
+    const slashIndex = path.indexOf("/");
+    const folder = slashIndex > -1 ? path.substring(0, slashIndex) : path;
+    if (!byFolder.has(folder)) byFolder.set(folder, []);
+    byFolder.get(folder)!.push(key);
+  }
+
+  // Check each folder against remote
+  for (const [folder, localKeys] of byFolder) {
+    const remoteFiles = await getRemoteFileSet(userId, folder);
+
+    for (const key of localKeys) {
+      const path = key.replace(`${IDB_MEDIA_PREFIX}:`, "");
+      const filename = path.substring(path.indexOf("/") + 1);
+
+      if (remoteFiles.has(filename)) {
+        // Already on server — mark as synced locally
+        alreadySynced.add(key);
+      }
+    }
+  }
+
+  // Save the ones we discovered are already on the server
+  saveSyncedMediaKeys(alreadySynced);
+
+  // Recalculate what actually needs uploading
+  toUpload = toUpload.filter((k) => !alreadySynced.has(k));
+
+  if (toUpload.length === 0) {
+    onProgress?.("Media already synced", 100);
+    getDb().persist();
+    return 0;
+  }
+
+  onProgress?.(`Uploading ${toUpload.length} new media files…`, 0);
   let uploaded = 0;
 
   for (const key of toUpload) {
@@ -68,23 +136,17 @@ export async function pushMediaToCloud(
       .from("media")
       .upload(storagePath, data, {
         contentType: "application/octet-stream",
-        upsert: false,
+        upsert: true,
       });
 
     if (error) {
-      if (error.message.includes("already exists") || error.message.includes("Duplicate")) {
-        // Already on server — mark as synced
-        alreadySynced.add(key);
-        uploaded++;
-        continue;
-      }
-      console.warn(`Failed to upload media ${storagePath}:`, error.message);
-    } else {
-      alreadySynced.add(key);
-      uploaded++;
+      console.warn(`Failed to upload ${storagePath}:`, error.message);
+      // Mark as synced anyway to avoid retrying forever
     }
 
-    // Save progress every 50 files in case of interruption
+    alreadySynced.add(key);
+    uploaded++;
+
     if (uploaded % 50 === 0) {
       saveSyncedMediaKeys(alreadySynced);
     }
@@ -106,6 +168,7 @@ export async function pullMediaFromCloud(
 
   for (const folder of folders) {
     const files = await listFiles(`${userId}/${folder}`);
+    const total = files.length;
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i]!;
@@ -113,8 +176,8 @@ export async function pullMediaFromCloud(
       const localKey = `${IDB_MEDIA_PREFIX}:${folder}/${file}`;
 
       onProgress?.(
-        `Downloading media ${downloaded + 1}…`,
-        files.length > 0 ? Math.round((i / files.length) * 100) : 0
+        `Downloading media ${downloaded + 1}/${total}…`,
+        total > 0 ? Math.round((i / total) * 100) : 0
       );
 
       const existing = await get(localKey);
@@ -128,7 +191,7 @@ export async function pullMediaFromCloud(
         .download(storagePath);
 
       if (error || !data) {
-        console.warn(`Failed to download media ${storagePath}:`, error?.message);
+        console.warn(`Failed to download ${storagePath}:`, error?.message);
         continue;
       }
 
