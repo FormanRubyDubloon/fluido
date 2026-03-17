@@ -45,8 +45,28 @@ export function ReviewSession({ onEnd }: ReviewSessionProps) {
   const [flash, setFlash] = useState<Rating | null>(null);
 
   const cardContainerRef = useRef<HTMLDivElement>(null);
+  // Keep a silent Audio element unlocked by the first tap on iOS
+  const audioUnlocked = useRef(false);
 
   const currentCard = queue[currentIndex];
+
+  // Unlock audio on first user interaction (iOS requirement)
+  useEffect(() => {
+    const unlock = () => {
+      if (audioUnlocked.current) return;
+      const silence = new Audio("data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4LjI5LjEwMAAAAAAAAAAAAAAA//tQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAABhgC7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7//////////////////////////////////////////////////////////////////8AAAAATGF2YzU4LjU0AAAAAAAAAAAAAAAAJAAAAAAAAAAAAYYoRwEHAAAAAAAAAAAAAAAAAAAA//tQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAABhgC7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7u7//////////////////////////////////////////////////////////////////8AAAAATGF2YzU4LjU0AAAAAAAAAAAAAAAAJAAAAAAAAAAAAYYoRwEHAAAAAAAAAAAAAAAAAAAA");
+      silence.play().then(() => {
+        audioUnlocked.current = true;
+      }).catch(() => {});
+    };
+
+    document.addEventListener("touchstart", unlock, { once: true });
+    document.addEventListener("click", unlock, { once: true });
+    return () => {
+      document.removeEventListener("touchstart", unlock);
+      document.removeEventListener("click", unlock);
+    };
+  }, []);
 
   // Render card when it changes
   useEffect(() => {
@@ -88,19 +108,23 @@ export function ReviewSession({ onEnd }: ReviewSessionProps) {
     };
   }, [currentCard, sessionComplete]);
 
-  // Play audio whenever the displayed content changes
-  const playVisibleAudio = useCallback(() => {
+  const playAudioInContainer = useCallback(() => {
     const container = cardContainerRef.current;
     if (!container) return;
 
-    // Small delay to let the DOM update with new innerHTML
-    requestAnimationFrame(() => {
-      const audioElements = Array.from(
-        container.querySelectorAll<HTMLAudioElement>("audio[data-autoplay]")
-      );
-      playSequentially(audioElements);
-    });
+    const audioElements = Array.from(
+      container.querySelectorAll<HTMLAudioElement>("audio[data-autoplay]")
+    );
+    playSequentially(audioElements);
   }, []);
+
+  // Auto-play audio when card content changes (non-mobile fallback)
+  useEffect(() => {
+    if (loading) return;
+    // Small delay to let DOM update
+    const timer = setTimeout(playAudioInContainer, 50);
+    return () => clearTimeout(timer);
+  }, [isRevealed, currentIndex, loading, playAudioInContainer]);
 
   const stopAudio = useCallback(() => {
     const container = cardContainerRef.current;
@@ -126,15 +150,17 @@ export function ReviewSession({ onEnd }: ReviewSessionProps) {
     if (!isRevealed) {
       stopAudio();
       revealCard();
-      // Audio will be triggered by the useEffect below
+      // Play back-side audio directly from this gesture handler (important for mobile)
+      setTimeout(() => {
+        const container = cardContainerRef.current;
+        if (!container) return;
+        const audioElements = Array.from(
+          container.querySelectorAll<HTMLAudioElement>("audio[data-autoplay]")
+        );
+        playSequentially(audioElements);
+      }, 100);
     }
   }, [isRevealed, stopAudio, revealCard]);
-
-  // Play audio when card is revealed or when a new card appears
-  useEffect(() => {
-    if (loading) return;
-    playVisibleAudio();
-  }, [isRevealed, currentIndex, loading, playVisibleAudio]);
 
   const handleRate = useCallback(
     (rating: Rating) => {
@@ -144,6 +170,15 @@ export function ReviewSession({ onEnd }: ReviewSessionProps) {
         setFlash(null);
         stopAudio();
         rateCard(rating);
+        // Play next card's audio from this gesture chain (important for mobile)
+        setTimeout(() => {
+          const container = cardContainerRef.current;
+          if (!container) return;
+          const audioElements = Array.from(
+            container.querySelectorAll<HTMLAudioElement>("audio[data-autoplay]")
+          );
+          playSequentially(audioElements);
+        }, 200);
       }, 150);
     },
     [isRevealed, stopAudio, rateCard]
@@ -226,30 +261,6 @@ export function ReviewSession({ onEnd }: ReviewSessionProps) {
           )}
         </div>
 
-`````{/* Debug: scheduling state */}
-        {import.meta.env.DEV && currentCard && (
-          <details className="mt-2 text-[10px] text-gray-400 font-mono w-full px-2">
-            <summary className="cursor-pointer">SRS debug</summary>
-            <pre className="mt-1 whitespace-pre-wrap">
-              {JSON.stringify({
-                type: currentCard.cardType,
-                reps: currentCard.reps,
-                lapses: currentCard.lapses,
-                interval: currentCard.interval,
-                difficulty: Math.round(currentCard.difficulty * 100) / 100,
-                stability: Math.round(currentCard.stability * 100) / 100,
-                due: currentCard.due,
-                preview: preview ? {
-                  again: preview.again.interval,
-                  hard: preview.hard.interval,
-                  good: preview.good.interval,
-                  easy: preview.easy.interval,
-                } : null,
-              }, null, 2)}
-            </pre>
-          </details>
-        )}
-
         {!isRevealed && (
           <p className="mt-4 text-sm text-gray-400 dark:text-gray-500">
             Tap or press space to reveal
@@ -261,7 +272,7 @@ export function ReviewSession({ onEnd }: ReviewSessionProps) {
         {isRevealed && preview ? (
           <RatingBar preview={preview} onRate={handleRate} />
         ) : (
-          <div className="h-15" />
+          <div className="h-[60px]" />
         )}
 
         {lastUndo && (
@@ -283,6 +294,7 @@ function playSequentially(elements: HTMLAudioElement[], index = 0): void {
     playSequentially(elements, index + 1);
   };
   current.play().catch(() => {
+    // Skip to next if blocked
     playSequentially(elements, index + 1);
   });
 }
