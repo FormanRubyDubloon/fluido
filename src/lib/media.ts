@@ -9,6 +9,11 @@ import { supabase } from "./supabase";
 const urlCache = new Map<string, string>();
 const inflight = new Map<string, Promise<string>>();
 
+/** Sanitize a filename for Supabase Storage (no spaces or special chars) */
+function sanitizeFilename(filename: string): string {
+  return filename.replace(/ /g, "_");
+}
+
 export async function getMediaUrl(
   deckId: string,
   filename: string
@@ -41,7 +46,7 @@ async function resolveUrl(
   const userId = session?.user?.id;
   if (!userId) return "";
 
-  const storagePath = `${userId}/${deckId}/${filename}`;
+  const storagePath = `${userId}/${deckId}/${sanitizeFilename(filename)}`;
 
   // Download as blob to avoid COEP/CORS issues with signed URLs
   const { data, error } = await supabase.storage
@@ -69,7 +74,7 @@ export async function uploadMedia(
   const userId = session?.user?.id;
   if (!userId) return;
 
-  const storagePath = `${userId}/${deckId}/${filename}`;
+  const storagePath = `${userId}/${deckId}/${sanitizeFilename(filename)}`;
 
   await supabase.storage.from("media").upload(storagePath, data, {
     contentType: "application/octet-stream",
