@@ -119,11 +119,14 @@ export async function fullPull(onProgress?: ProgressCallback): Promise<SyncResul
   if (!userId) return null;
 
   onProgress?.("Downloading data…", 0);
-  const result = await pullAllFromCloud(userId);
+  const result = await pullAllFromCloud(userId, (stage, pct) => {
+    // Data download is 0-60%, media is 60-100%
+    onProgress?.(stage, Math.round(pct * 0.6));
+  });
 
-  onProgress?.("Downloading media…", 50);
+  onProgress?.("Downloading media…", 60);
   const media = await pullMediaFromCloud(userId, (stage, pct) => {
-    onProgress?.(stage, 50 + Math.round(pct * 0.5));
+    onProgress?.(stage, 60 + Math.round(pct * 0.4));
   });
 
   onProgress?.("Done!", 100);

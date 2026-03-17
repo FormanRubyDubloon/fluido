@@ -1,31 +1,42 @@
 import { supabase } from "@/lib/supabase";
 import { getDb } from "@/platform/adapter";
 
-/**
- * Pull all data from Supabase for the current user into local SQLite.
- * Clears local data first, then inserts everything from the cloud.
- */
-export async function pullAllFromCloud(userId: string): Promise<{
+export type ProgressCallback = (stage: string, percent: number) => void;
+
+export async function pullAllFromCloud(
+  userId: string,
+  onProgress?: ProgressCallback
+): Promise<{
   decks: number;
   cards: number;
   reviewLogs: number;
 }> {
   const db = getDb();
 
-  // Fetch all tables
-  const [decks, noteTypes, notes, cards, cardStates, reviewLogs, settings] = await Promise.all([
-    fetchAll("decks", userId),
-    fetchAll("note_types", userId),
-    fetchAll("notes", userId),
-    fetchAll("cards", userId),
-    fetchAll("card_states", userId),
-    fetchAll("review_logs", userId),
-    fetchSettings(userId),
-  ]);
+  onProgress?.("Downloading decks…", 0);
+  const decks = await fetchAll("decks", userId);
 
-  // Clear local data and re-insert from cloud
+  onProgress?.("Downloading note types…", 10);
+  const noteTypes = await fetchAll("note_types", userId);
+
+  onProgress?.("Downloading notes…", 20);
+  const notes = await fetchAll("notes", userId);
+
+  onProgress?.("Downloading cards…", 35);
+  const cards = await fetchAll("cards", userId);
+
+  onProgress?.("Downloading card states…", 50);
+  const cardStates = await fetchAll("card_states", userId);
+
+  onProgress?.("Downloading review logs…", 60);
+  const reviewLogs = await fetchAll("review_logs", userId);
+
+  onProgress?.("Downloading settings…", 80);
+  const settings = await fetchSettings(userId);
+
+  onProgress?.("Rebuilding local database…", 85);
+
   db.transaction(() => {
-    // Delete in reverse dependency order
     db.run("DELETE FROM review_logs");
     db.run("DELETE FROM card_states");
     db.run("DELETE FROM cards");
@@ -33,7 +44,6 @@ export async function pullAllFromCloud(userId: string): Promise<{
     db.run("DELETE FROM note_types");
     db.run("DELETE FROM decks");
 
-    // Insert decks
     for (const row of decks) {
       db.run(
         `INSERT INTO decks (id, name, parent_id, language, source, created_at, updated_at)
@@ -42,7 +52,6 @@ export async function pullAllFromCloud(userId: string): Promise<{
       );
     }
 
-    // Insert note types
     for (const row of noteTypes) {
       db.run(
         `INSERT INTO note_types (id, name, fields, card_templates, source, created_at, updated_at)
@@ -56,7 +65,6 @@ export async function pullAllFromCloud(userId: string): Promise<{
       );
     }
 
-    // Insert notes
     for (const row of notes) {
       db.run(
         `INSERT INTO notes (id, note_type_id, fields, tags, source, source_id, created_at, updated_at)
@@ -70,7 +78,6 @@ export async function pullAllFromCloud(userId: string): Promise<{
       );
     }
 
-    // Insert cards
     for (const row of cards) {
       db.run(
         `INSERT INTO cards (id, note_id, deck_id, template_index, card_type, source, suspended, created_at, updated_at)
@@ -79,7 +86,6 @@ export async function pullAllFromCloud(userId: string): Promise<{
       );
     }
 
-    // Insert card states
     for (const row of cardStates) {
       db.run(
         `INSERT INTO card_states (card_id, difficulty, stability, due, interval, reps, lapses, last_review, updated_at)
@@ -88,7 +94,6 @@ export async function pullAllFromCloud(userId: string): Promise<{
       );
     }
 
-    // Insert review logs
     for (const row of reviewLogs) {
       db.run(
         `INSERT INTO review_logs (id, card_id, rating, elapsed_ms, review_time, scheduled_days, actual_days, created_at)
@@ -97,7 +102,6 @@ export async function pullAllFromCloud(userId: string): Promise<{
       );
     }
 
-    // Restore settings
     if (settings) {
       const settingsObj = typeof settings === "string" ? JSON.parse(settings) : settings;
       for (const [key, value] of Object.entries(settingsObj)) {
@@ -109,7 +113,10 @@ export async function pullAllFromCloud(userId: string): Promise<{
     }
   });
 
+  onProgress?.("Saving…", 95);
   await db.persist();
+
+  onProgress?.("Done!", 100);
 
   return {
     decks: decks.length,
