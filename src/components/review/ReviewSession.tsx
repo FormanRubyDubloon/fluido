@@ -4,6 +4,7 @@ import { useSettingsStore } from "@/store/settings-store";
 import { createFsrsScheduler } from "@/srs/fsrs";
 import { renderCard } from "@/renderer/anki-template";
 import { useKeyboard } from "@/hooks/useKeyboard";
+import { Icon } from "@/components/ui/Icon";
 import { SessionHeader } from "./SessionHeader";
 import { CardFace } from "./CardFace";
 import { RatingBar } from "./RatingBar";
@@ -228,7 +229,7 @@ export function ReviewSession({ onEnd }: ReviewSessionProps) {
   if (loading || !currentCard) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-4xl animate-pulse">⏳</div>
+        <Icon name="progress_activity" size={40} className="animate-spin text-gray-400" />
       </div>
     );
   }

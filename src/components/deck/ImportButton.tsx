@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
 import { importApkg, type ImportResult } from "@/import/index";
+import { Icon } from "@/components/ui/Icon";
 
 interface ImportButtonProps {
   onImportComplete: () => void;
@@ -60,12 +61,12 @@ export function ImportButton({ onImportComplete }: ImportButtonProps) {
       >
         {importing ? (
           <>
-            <span className="animate-spin">⏳</span>
+            <Icon name="progress_activity" size={18} className="animate-spin" />
             Importing…
           </>
         ) : (
           <>
-            <span>+</span>
+            <Icon name="add" size={18} />
             Import .apkg
           </>
         )}
@@ -99,7 +100,7 @@ function ImportSummary({
           onClick={onDismiss}
           className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-lg leading-none"
         >
-          ×
+          <Icon name="close" size={16} />
         </button>
       </div>
       <dl className="space-y-1 text-sm">

@@ -1,12 +1,14 @@
+import { Icon } from "@/components/ui/Icon";
+
 interface SidebarProps {
   currentView: string;
   onNavigate: (view: string) => void;
 }
 
 const NAV_ITEMS = [
-  { id: "decks", label: "Decks", icon: "📚" },
-  { id: "stats", label: "Statistics", icon: "📊" },
-  { id: "settings", label: "Settings", icon: "⚙️" },
+  { id: "decks", label: "Decks", icon: "style" },
+  { id: "stats", label: "Statistics", icon: "bar_chart" },
+  { id: "settings", label: "Settings", icon: "settings" },
 ] as const;
 
 export function Sidebar({ currentView, onNavigate }: SidebarProps) {
@@ -26,7 +28,7 @@ export function Sidebar({ currentView, onNavigate }: SidebarProps) {
               }
             `}
           >
-            <span className="text-base">{item.icon}</span>
+            <Icon name={item.icon} size={20} filled={currentView === item.id} />
             {item.label}
           </button>
         </li>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Icon } from "@/components/ui/Icon";
 import { useSettingsStore } from "@/store/settings-store";
 import { useDeckStore } from "@/store/deck-store";
 import { useReviewStore } from "@/store/review-store";
@@ -49,7 +50,7 @@ export default function App() {
     return (
       <div className="flex items-center justify-center h-screen bg-white dark:bg-gray-950 p-8">
         <div className="text-center max-w-md">
-          <div className="text-5xl mb-4">😵</div>
+          <div className="text-red-500 mb-4"><Icon name="error" size={48} /></div>
           <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">Failed to start</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">{error}</p>
           <button onClick={() => window.location.reload()} className="px-4 py-3 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors">Reload</button>
@@ -62,7 +63,7 @@ export default function App() {
     return (
       <div className="flex items-center justify-center h-screen bg-white dark:bg-gray-950">
         <div className="text-center">
-          <div className="text-4xl mb-3 animate-pulse">⏳</div>
+          <div className="text-gray-400 mb-3 animate-pulse"><Icon name="progress_activity" size={40} className="animate-spin" /></div>
           <p className="text-sm text-gray-500 dark:text-gray-400">Loading…</p>
         </div>
       </div>

@@ -1,3 +1,5 @@
+import { Icon } from "@/components/ui/Icon";
+
 interface SessionHeaderProps {
   newCount: number;
   learningCount: number;
@@ -20,7 +22,7 @@ export function SessionHeader({
                    dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-gray-800
                    transition-colors text-sm"
       >
-        ✕
+        <Icon name="close" size={20} />
       </button>
 
       <div className="flex items-center gap-4 text-sm font-medium tabular-nums">

@@ -1,4 +1,5 @@
 import { formatDuration } from "@/lib/time";
+import { Icon } from "@/components/ui/Icon";
 
 interface SessionCompleteProps {
   cardsReviewed: number;
@@ -21,7 +22,7 @@ export function SessionComplete({
 
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center max-w-md mx-auto">
-      <div className="text-5xl mb-4">🎉</div>
+      <div className="text-blue-600 mb-4"><Icon name="celebration" size={48} /></div>
       <h2 className="text-2xl font-semibold mb-2">Session Complete</h2>
       <p className="text-gray-500 dark:text-gray-400 mb-8">
         Nice work! Here&apos;s how you did.

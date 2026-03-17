@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useSettingsStore } from "@/store/settings-store";
+import { Icon } from "@/components/ui/Icon";
 
 interface ShellProps {
   children: React.ReactNode;
@@ -33,7 +34,7 @@ export function Shell({ children, sidebar }: ShellProps) {
                          transition-colors"
               aria-label="Toggle dark mode"
             >
-              {darkMode ? "☀️" : "🌙"}
+              <Icon name={darkMode ? "light_mode" : "dark_mode"} size={20} />
             </button>
           </div>
           <nav className="p-3 overflow-y-auto h-[calc(100vh-3.5rem)]">
@@ -58,9 +59,7 @@ export function Shell({ children, sidebar }: ShellProps) {
                            dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-gray-800"
                 aria-label="Open sidebar"
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                </svg>
+                <Icon name="menu" size={24} />
               </button>
               <h1 className="ml-3 text-lg font-semibold">Fluido</h1>
             </div>

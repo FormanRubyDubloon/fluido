@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useDeckStore, type DeckWithCounts } from "@/store/deck-store";
 import { renameDeck, deleteDeck, resetDeckProgress, getNoteTypesForDeck, updateNoteTypeTemplates } from "@/lib/queries";
+import { Icon } from "@/components/ui/Icon";
 import { ImportButton } from "./ImportButton";
 
 interface DeckBrowserProps {
@@ -177,11 +178,7 @@ function DeckRow({
                        dark:hover:text-gray-300 dark:hover:bg-gray-800
                        transition-colors shrink-0"
           >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-              <circle cx="8" cy="3" r="1.5" />
-              <circle cx="8" cy="8" r="1.5" />
-              <circle cx="8" cy="13" r="1.5" />
-            </svg>
+            <Icon name="more_vert" size={18} />
           </button>
 
           {menuOpen && (
@@ -439,7 +436,7 @@ function EditTemplatesModal({
             onClick={onClose}
             className="w-10 h-10 flex items-center justify-center rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:text-gray-300 dark:hover:bg-gray-800"
           >
-            ✕
+            <Icon name="close" size={20} />
           </button>
         </div>
 
@@ -561,7 +558,7 @@ function EditTemplatesModal({
 function EmptyState() {
   return (
     <div className="flex flex-col items-center justify-center py-20 text-center">
-      <div className="text-5xl mb-4">📦</div>
+      <div className="text-gray-400 mb-4"><Icon name="inbox" size={48} /></div>
       <h3 className="text-lg font-medium mb-2">No decks yet</h3>
       <p className="text-sm text-gray-500 dark:text-gray-400 max-w-xs">
         Import an Anki deck (.apkg file) to get started. Your flashcards,

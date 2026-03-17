@@ -15,7 +15,7 @@ export function StatsPage() {
   if (!loaded) {
     return (
       <div className="flex items-center justify-center h-64">
-        <div className="text-4xl animate-pulse">⏳</div>
+        <span className="material-symbols-rounded animate-spin text-gray-400" style={{ fontSize: 40, fontVariationSettings: "'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 40" }}>progress_activity</span>
       </div>
     );
   }
