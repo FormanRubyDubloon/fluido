@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useSettingsStore } from "@/store/settings-store";
-import { getFiles, getAdapter } from "@/platform/adapter";
+import { getFiles, getAdapter, getDb } from "@/platform/adapter";
 import { detectLanguagesFromCards, getAvailableFonts } from "@/lib/fonts";
 
 export function SettingsPanel() {
@@ -46,6 +46,7 @@ export function SettingsPanel() {
       <Section title="Data">
         <SaveFileRow />
         <ExportRow />
+        <ResetMediaSyncRow />
       </Section>
     </div>
   );
@@ -400,6 +401,38 @@ function ExportRow() {
         </button>
       </div>
       {message && <p className="text-xs mt-2 text-gray-500 dark:text-gray-400">{message}</p>}
+    </div>
+  );
+}
+
+function ResetMediaSyncRow() {
+  const [done, setDone] = useState(false);
+
+  const handleReset = () => {
+    const db = getDb();
+    db.run("DELETE FROM settings WHERE key = 'synced_media_keys'");
+    db.persist();
+    setDone(true);
+  };
+
+  return (
+    <div className="py-2">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <div className="text-sm font-medium">Reset media sync</div>
+          <div className="text-xs text-gray-500 dark:text-gray-400">
+            Clear the media sync cache so files re-upload on next sync
+          </div>
+        </div>
+        <button
+          onClick={handleReset}
+          disabled={done}
+          className="px-4 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700
+                     hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors disabled:opacity-50 shrink-0"
+        >
+          {done ? "Cleared" : "Reset"}
+        </button>
+      </div>
     </div>
   );
 }
