@@ -53,9 +53,9 @@ export function ReviewSession({ onEnd }: ReviewSessionProps) {
     if (!currentCard || sessionComplete) return;
 
     let cancelled = false;
-    setLoading(true);
 
     (async () => {
+      setLoading(true);
       const rendered = await renderCard(currentCard);
       if (cancelled) return;
 
@@ -225,7 +225,7 @@ export function ReviewSession({ onEnd }: ReviewSessionProps) {
             <CardFace html={backHtml} css={cardCss} />
           )}
         </div>
-        
+
 `````{/* Debug: scheduling state */}
         {import.meta.env.DEV && currentCard && (
           <details className="mt-2 text-[10px] text-gray-400 font-mono w-full px-2">
@@ -261,7 +261,7 @@ export function ReviewSession({ onEnd }: ReviewSessionProps) {
         {isRevealed && preview ? (
           <RatingBar preview={preview} onRate={handleRate} />
         ) : (
-          <div className="h-[60px]" />
+          <div className="h-15" />
         )}
 
         {lastUndo && (

@@ -14,7 +14,7 @@ export function SyncCheckModal({ onReady, onCancel }: SyncCheckModalProps) {
 
   const { syncing, pull } = useSyncStore();
 
-  const stableOnReady = useCallback(onReady, [onReady]);
+  const stableOnReady = useCallback(() => onReady(), [onReady]);
 
   useEffect(() => {
     // If a sync is in progress, wait for it to finish
