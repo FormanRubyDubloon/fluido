@@ -7,7 +7,7 @@ interface SyncCheckModalProps {
   onCancel: () => void;
 }
 
-export function SyncCheckModal({ onReady }: SyncCheckModalProps) {
+export function SyncCheckModal({ onReady, onCancel }: SyncCheckModalProps) {
   const [checking, setChecking] = useState(true);
   const [cloudNewer, setCloudNewer] = useState(false);
   const [cloudTime, setCloudTime] = useState<string | null>(null);
