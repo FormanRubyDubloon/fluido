@@ -15,10 +15,15 @@ export async function renderCard(
 ): Promise<{ front: string; back: string; css: string }> {
   const noteType = await getNoteType(card.noteTypeId);
 
+  // Ensure fields is a parsed object (RPC may return it as a JSON string)
+  const fields: Record<string, string> = typeof card.fields === "string"
+    ? JSON.parse(card.fields)
+    : card.fields;
+
   if (!noteType) {
     return {
-      front: formatFallback(card.fields),
-      back: formatFallback(card.fields),
+      front: formatFallback(fields),
+      back: formatFallback(fields),
       css: "",
     };
   }
@@ -38,8 +43,8 @@ export async function renderCard(
 
   if (!template) {
     return {
-      front: formatFallback(card.fields),
-      back: formatFallback(card.fields),
+      front: formatFallback(fields),
+      back: formatFallback(fields),
       css: "",
     };
   }
@@ -48,7 +53,7 @@ export async function renderCard(
 
   let frontHtml = renderTemplate(
     template.front,
-    card.fields,
+    fields,
     undefined,
     clozeIndex
   );
@@ -56,7 +61,7 @@ export async function renderCard(
   let backHtml: string;
   if (isCloze && clozeIndex != null) {
     const answeredFields: Record<string, string> = {};
-    for (const [key, value] of Object.entries(card.fields)) {
+    for (const [key, value] of Object.entries(fields)) {
       answeredFields[key] = renderClozeAnswer(value, clozeIndex);
     }
     backHtml = renderTemplate(
@@ -66,7 +71,7 @@ export async function renderCard(
       null
     );
   } else {
-    backHtml = renderTemplate(template.back, card.fields, frontHtml, null);
+    backHtml = renderTemplate(template.back, fields, frontHtml, null);
   }
 
   frontHtml = sanitiseHtml(frontHtml);
