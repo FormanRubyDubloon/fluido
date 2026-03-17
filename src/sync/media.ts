@@ -29,9 +29,6 @@ function saveSyncedMediaKeys(syncedKeys: Set<string>): void {
   );
 }
 
-/**
- * List all files already on the server for this user.
- */
 async function getRemoteFileSet(userId: string, folder: string): Promise<Set<string>> {
   const remote = new Set<string>();
   let offset = 0;
@@ -68,7 +65,6 @@ export async function pushMediaToCloud(
 
   if (mediaKeys.length === 0) return 0;
 
-  // Check local tracking first
   const alreadySynced = getSyncedMediaKeys();
   let toUpload = mediaKeys.filter((k) => !alreadySynced.has(k));
 
@@ -77,10 +73,8 @@ export async function pushMediaToCloud(
     return 0;
   }
 
-  // Check what's already on the server to avoid 400 errors
   onProgress?.("Checking existing media on server…", 0);
 
-  // Group by folder (deck ID) to list remote files
   const byFolder = new Map<string, string[]>();
   for (const key of toUpload) {
     const path = key.replace(`${IDB_MEDIA_PREFIX}:`, "");
@@ -90,7 +84,6 @@ export async function pushMediaToCloud(
     byFolder.get(folder)!.push(key);
   }
 
-  // Check each folder against remote
   for (const [folder, localKeys] of byFolder) {
     const remoteFiles = await getRemoteFileSet(userId, folder);
 
@@ -99,16 +92,13 @@ export async function pushMediaToCloud(
       const filename = path.substring(path.indexOf("/") + 1);
 
       if (remoteFiles.has(filename)) {
-        // Already on server — mark as synced locally
         alreadySynced.add(key);
       }
     }
   }
 
-  // Save the ones we discovered are already on the server
   saveSyncedMediaKeys(alreadySynced);
 
-  // Recalculate what actually needs uploading
   toUpload = toUpload.filter((k) => !alreadySynced.has(k));
 
   if (toUpload.length === 0) {
@@ -141,7 +131,6 @@ export async function pushMediaToCloud(
 
     if (error) {
       console.warn(`Failed to upload ${storagePath}:`, error.message);
-      // Mark as synced anyway to avoid retrying forever
     }
 
     alreadySynced.add(key);
@@ -170,13 +159,15 @@ export async function pullMediaFromCloud(
     const files = await listFiles(`${userId}/${folder}`);
     const total = files.length;
 
+    onProgress?.(`Found ${total} media files in ${folder}…`, 0);
+
     for (let i = 0; i < files.length; i++) {
       const file = files[i]!;
       const storagePath = `${userId}/${folder}/${file}`;
       const localKey = `${IDB_MEDIA_PREFIX}:${folder}/${file}`;
 
       onProgress?.(
-        `Downloading media ${downloaded + 1}/${total}…`,
+        `Downloading media ${i + 1}/${total}…`,
         total > 0 ? Math.round((i / total) * 100) : 0
       );
 
@@ -205,23 +196,51 @@ export async function pullMediaFromCloud(
 }
 
 async function listFolders(prefix: string): Promise<string[]> {
-  const { data, error } = await supabase.storage
-    .from("media")
-    .list(prefix);
+  const names: string[] = [];
+  let offset = 0;
+  const limit = 1000;
 
-  if (error || !data) return [];
-  return data
-    .filter((item) => item.id === null || !item.metadata)
-    .map((item) => item.name);
+  while (true) {
+    const { data, error } = await supabase.storage
+      .from("media")
+      .list(prefix, { limit, offset });
+
+    if (error || !data || data.length === 0) break;
+
+    for (const item of data) {
+      if (item.id === null || !item.metadata) {
+        names.push(item.name);
+      }
+    }
+
+    if (data.length < limit) break;
+    offset += limit;
+  }
+
+  return names;
 }
 
 async function listFiles(prefix: string): Promise<string[]> {
-  const { data, error } = await supabase.storage
-    .from("media")
-    .list(prefix);
+  const names: string[] = [];
+  let offset = 0;
+  const limit = 1000;
 
-  if (error || !data) return [];
-  return data
-    .filter((item) => item.id !== null && item.metadata)
-    .map((item) => item.name);
+  while (true) {
+    const { data, error } = await supabase.storage
+      .from("media")
+      .list(prefix, { limit, offset });
+
+    if (error || !data || data.length === 0) break;
+
+    for (const item of data) {
+      if (item.id !== null && item.metadata) {
+        names.push(item.name);
+      }
+    }
+
+    if (data.length < limit) break;
+    offset += limit;
+  }
+
+  return names;
 }
