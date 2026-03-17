@@ -251,8 +251,8 @@ export function ReviewSession({ onEnd }: ReviewSessionProps) {
         onEnd={handleEnd}
       />
 
-      <div className="flex-1 flex flex-col items-center justify-center">
-        <div className="w-full relative">
+      <div className="flex-1 flex flex-col items-center justify-center min-h-0">
+        <div className="w-full relative flex-1 md:flex-none flex flex-col min-h-0">
           {/* Flash overlay */}
           <motion.div
             className={`absolute inset-0 pointer-events-none z-10 rounded-2xl ${flash ? FLASH_COLORS[flash] : ""}`}
