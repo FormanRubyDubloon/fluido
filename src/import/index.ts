@@ -3,6 +3,7 @@ import { parseAnkiCollection } from "./parser";
 import { mapCollection, type MapResult } from "./mapper";
 import { storeMediaFiles } from "./media";
 import { getExistingSourceIds, batchUpsert } from "@/lib/queries";
+import { supabase } from "@/lib/supabase";
 
 export interface ImportResult {
   decksCreated: number;
@@ -24,24 +25,32 @@ export async function importApkg(buffer: ArrayBuffer): Promise<ImportResult> {
   // Map Anki entities to Fluido row arrays
   const mapped: MapResult = mapCollection(collection, existingSourceIds);
 
+  // Get user_id for RLS
+  const { data: { session } } = await supabase.auth.getSession();
+  const userId = session?.user?.id;
+  if (!userId) throw new Error("Not authenticated");
+
+  const withUser = (rows: Record<string, unknown>[]) =>
+    rows.map((r) => ({ ...r, user_id: userId }));
+
   // Insert into Supabase in dependency order
   if (mapped.decks.length > 0) {
-    await batchUpsert("decks", mapped.decks);
+    await batchUpsert("decks", withUser(mapped.decks));
   }
   if (mapped.noteTypes.length > 0) {
-    await batchUpsert("note_types", mapped.noteTypes);
+    await batchUpsert("note_types", withUser(mapped.noteTypes));
   }
   if (mapped.notes.length > 0) {
-    await batchUpsert("notes", mapped.notes);
+    await batchUpsert("notes", withUser(mapped.notes));
   }
   if (mapped.cards.length > 0) {
-    await batchUpsert("cards", mapped.cards);
+    await batchUpsert("cards", withUser(mapped.cards));
   }
   if (mapped.cardStates.length > 0) {
-    await batchUpsert("card_states", mapped.cardStates, "card_id");
+    await batchUpsert("card_states", withUser(mapped.cardStates), "card_id");
   }
   if (mapped.reviewLogs.length > 0) {
-    await batchUpsert("review_logs", mapped.reviewLogs);
+    await batchUpsert("review_logs", withUser(mapped.reviewLogs));
   }
 
   // Upload media directly to Supabase Storage

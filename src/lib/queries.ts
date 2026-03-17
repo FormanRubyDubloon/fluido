@@ -269,6 +269,8 @@ export interface ReviewCommitData {
 
 export async function commitReview(data: ReviewCommitData): Promise<void> {
   const nowIso = new Date().toISOString();
+  const { data: { session } } = await supabase.auth.getSession();
+  const userId = session?.user?.id;
 
   // Run all three writes in parallel
   const [stateResult, cardResult, logResult] = await Promise.all([
@@ -291,7 +293,7 @@ export async function commitReview(data: ReviewCommitData): Promise<void> {
       .update({ card_type: data.newCardType, updated_at: nowIso })
       .eq("id", data.cardId),
 
-    supabase.from("review_logs").insert(data.reviewLog),
+    supabase.from("review_logs").insert({ ...data.reviewLog, user_id: userId }),
   ]);
 
   if (stateResult.error) throw new Error(stateResult.error.message);
@@ -433,11 +435,12 @@ export async function setSetting(
   key: string,
   value: unknown
 ): Promise<void> {
-  // Read current settings, merge, write back
   const current = await getSettings();
   current[key] = value;
 
+  const { data: { session } } = await supabase.auth.getSession();
   const { error } = await supabase.from("user_settings").upsert({
+    user_id: session?.user?.id,
     settings: current,
     updated_at: new Date().toISOString(),
   });
@@ -450,7 +453,9 @@ export async function setSettings(
   const current = await getSettings();
   Object.assign(current, updates);
 
+  const { data: { session } } = await supabase.auth.getSession();
   const { error } = await supabase.from("user_settings").upsert({
+    user_id: session?.user?.id,
     settings: current,
     updated_at: new Date().toISOString(),
   });
