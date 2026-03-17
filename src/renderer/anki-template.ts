@@ -1,4 +1,4 @@
-import { getDb } from "@/platform/adapter";
+import { getNoteType } from "@/lib/queries";
 import { renderTemplate, renderClozeAnswer } from "@/import/template";
 import { sanitiseHtml, resolveMedia } from "./sanitise";
 import type { QueueCard } from "@/srs/queue";
@@ -13,12 +13,9 @@ interface CardTemplate {
 export async function renderCard(
   card: QueueCard
 ): Promise<{ front: string; back: string; css: string }> {
-  const noteTypeRows = getDb().exec<{ card_templates: string }>(
-    "SELECT card_templates FROM note_types WHERE id = ?",
-    [card.noteTypeId]
-  );
+  const noteType = await getNoteType(card.noteTypeId);
 
-  if (noteTypeRows.length === 0) {
+  if (!noteType) {
     return {
       front: formatFallback(card.fields),
       back: formatFallback(card.fields),
@@ -26,7 +23,7 @@ export async function renderCard(
     };
   }
 
-  const templates: CardTemplate[] = JSON.parse(noteTypeRows[0]!.card_templates);
+  const templates: CardTemplate[] = JSON.parse(noteType.card_templates);
 
   const isCloze = templates.length === 1 && (
     templates[0]!.front.includes("{{cloze:") ||

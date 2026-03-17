@@ -1,5 +1,5 @@
 import DOMPurify from "dompurify";
-import { getFiles } from "@/platform/adapter";
+import { getMediaUrl } from "@/lib/media";
 
 export function sanitiseHtml(html: string): string {
   return DOMPurify.sanitize(html, {
@@ -22,8 +22,6 @@ export async function resolveMedia(
   html: string,
   deckId: string
 ): Promise<string> {
-  const files = getFiles();
-
   // Resolve src="..." references
   const srcRegex = /src="([^"]+)"/g;
   const matches: { full: string; filename: string }[] = [];
@@ -45,14 +43,14 @@ export async function resolveMedia(
   let result = html;
 
   for (const m of matches) {
-    const url = await files.getMediaUrl(deckId, m.filename);
+    const url = await getMediaUrl(deckId, m.filename);
     if (url) {
       result = result.replace(m.full, `src="${url}"`);
     }
   }
 
   for (const m of soundMatches) {
-    const url = await files.getMediaUrl(deckId, m.filename);
+    const url = await getMediaUrl(deckId, m.filename);
     const audioId = `audio-${Math.random().toString(36).slice(2, 8)}`;
 
     if (url) {
@@ -68,7 +66,6 @@ export async function resolveMedia(
         `</span>`
       );
     } else {
-      // Media not available — show disabled button instead of raw [sound:] text
       result = result.replace(
         m.full,
         `<span class="fluido-audio-inline">` +

@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { getFiles } from "@/platform/adapter";
+import { useState, useRef } from "react";
 import { importApkg, type ImportResult } from "@/import/index";
 
 interface ImportButtonProps {
@@ -10,31 +9,44 @@ export function ImportButton({ onImportComplete }: ImportButtonProps) {
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const handleImport = async () => {
+    inputRef.current?.click();
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
     setError(null);
     setResult(null);
     setImporting(true);
 
     try {
-      const buffer = await getFiles().pickApkgFile();
+      const buffer = await file.arrayBuffer();
       const importResult = await importApkg(buffer);
       setResult(importResult);
       onImportComplete();
-    } catch (e) {
-      if (e instanceof Error && e.message === "File picker cancelled") {
-        // User cancelled
-      } else {
-        console.error("Import failed:", e);
-        setError(e instanceof Error ? e.message : "Import failed");
-      }
+    } catch (err) {
+      console.error("Import failed:", err);
+      setError(err instanceof Error ? err.message : "Import failed");
     } finally {
       setImporting(false);
+      // Reset input so the same file can be re-imported
+      if (inputRef.current) inputRef.current.value = "";
     }
   };
 
   return (
     <div className="relative">
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".apkg"
+        onChange={handleFileChange}
+        className="hidden"
+      />
       <button
         onClick={handleImport}
         disabled={importing}

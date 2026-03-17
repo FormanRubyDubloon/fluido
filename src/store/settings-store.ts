@@ -1,6 +1,5 @@
 import { create } from "zustand";
-import { getSetting, setSetting } from "@/db/repository";
-import { getDb } from "@/platform/adapter";
+import { getSettings, setSetting } from "@/lib/queries";
 import {
   DEFAULT_NEW_CARDS_PER_DAY,
   DEFAULT_LEARNING_STEPS,
@@ -18,7 +17,7 @@ interface SettingsState {
   fontPreferences: Record<string, string>;
   loaded: boolean;
 
-  loadSettings: () => void;
+  loadSettings: () => Promise<void>;
   setDarkMode: (enabled: boolean) => void;
   setNewCardsPerDay: (count: number) => void;
   setLearningSteps: (steps: number[]) => void;
@@ -28,6 +27,12 @@ interface SettingsState {
   setSimpleRatingMode: (enabled: boolean) => void;
   setFontForLanguage: (languageId: string, fontFamily: string) => void;
   clearFontForLanguage: (languageId: string) => void;
+}
+
+function persist(key: string, value: unknown) {
+  setSetting(key, value).catch((e) =>
+    console.error("Failed to save setting:", e)
+  );
 }
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
@@ -41,77 +46,74 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   fontPreferences: {},
   loaded: false,
 
-  loadSettings: () => {
-    set({
-      darkMode: getSetting<boolean>("dark_mode") ?? false,
-      newCardsPerDay:
-        getSetting<number>("new_cards_per_day") ?? DEFAULT_NEW_CARDS_PER_DAY,
-      learningSteps:
-        getSetting<number[]>("learning_steps") ?? DEFAULT_LEARNING_STEPS,
-      relearningSteps:
-        getSetting<number[]>("relearning_steps") ?? DEFAULT_RELEARNING_STEPS,
-      fsrsWeights: getSetting<number[] | null>("fsrs_weights") ?? null,
-      requestRetention: getSetting<number>("request_retention") ?? 0.9,
-      simpleRatingMode: getSetting<boolean>("simple_rating_mode") ?? false,
-      fontPreferences: getSetting<Record<string, string>>("font_preferences") ?? {},
-      loaded: true,
-    });
+  loadSettings: async () => {
+    try {
+      const s = await getSettings();
+      set({
+        darkMode: (s.dark_mode as boolean) ?? false,
+        newCardsPerDay:
+          (s.new_cards_per_day as number) ?? DEFAULT_NEW_CARDS_PER_DAY,
+        learningSteps:
+          (s.learning_steps as number[]) ?? DEFAULT_LEARNING_STEPS,
+        relearningSteps:
+          (s.relearning_steps as number[]) ?? DEFAULT_RELEARNING_STEPS,
+        fsrsWeights: (s.fsrs_weights as number[] | null) ?? null,
+        requestRetention: (s.request_retention as number) ?? 0.9,
+        simpleRatingMode: (s.simple_rating_mode as boolean) ?? false,
+        fontPreferences:
+          (s.font_preferences as Record<string, string>) ?? {},
+        loaded: true,
+      });
+    } catch {
+      set({ loaded: true });
+    }
   },
 
   setDarkMode: (enabled) => {
-    setSetting("dark_mode", enabled);
-    getDb().persist();
+    persist("dark_mode", enabled);
     set({ darkMode: enabled });
   },
 
   setNewCardsPerDay: (count) => {
-    setSetting("new_cards_per_day", count);
-    getDb().persist();
+    persist("new_cards_per_day", count);
     set({ newCardsPerDay: count });
   },
 
   setLearningSteps: (steps) => {
-    setSetting("learning_steps", steps);
-    getDb().persist();
+    persist("learning_steps", steps);
     set({ learningSteps: steps });
   },
 
   setRelearningSteps: (steps) => {
-    setSetting("relearning_steps", steps);
-    getDb().persist();
+    persist("relearning_steps", steps);
     set({ relearningSteps: steps });
   },
 
   setFsrsWeights: (weights) => {
-    setSetting("fsrs_weights", weights);
-    getDb().persist();
+    persist("fsrs_weights", weights);
     set({ fsrsWeights: weights });
   },
 
   setRequestRetention: (retention) => {
-    setSetting("request_retention", retention);
-    getDb().persist();
+    persist("request_retention", retention);
     set({ requestRetention: retention });
   },
 
   setSimpleRatingMode: (enabled) => {
-    setSetting("simple_rating_mode", enabled);
-    getDb().persist();
+    persist("simple_rating_mode", enabled);
     set({ simpleRatingMode: enabled });
   },
 
   setFontForLanguage: (languageId, fontFamily) => {
     const prefs = { ...get().fontPreferences, [languageId]: fontFamily };
-    setSetting("font_preferences", prefs);
-    getDb().persist();
+    persist("font_preferences", prefs);
     set({ fontPreferences: prefs });
   },
 
   clearFontForLanguage: (languageId) => {
     const prefs = { ...get().fontPreferences };
     delete prefs[languageId];
-    setSetting("font_preferences", prefs);
-    getDb().persist();
+    persist("font_preferences", prefs);
     set({ fontPreferences: prefs });
   },
 }));

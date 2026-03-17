@@ -1,4 +1,4 @@
-import { getDb } from "@/platform/adapter";
+import { sampleNoteFields } from "./queries";
 
 interface LanguageInfo {
   id: string;
@@ -19,17 +19,13 @@ const LANGUAGES: LanguageInfo[] = [
   { id: "en", name: "Latin / European", test: (t) => /[a-zA-ZÀ-ÿ]/.test(t) },
 ];
 
-export function detectLanguagesFromCards(): { id: string; name: string }[] {
-  const db = getDb();
+export async function detectLanguagesFromCards(): Promise<{ id: string; name: string }[]> {
+  const fieldStrings = await sampleNoteFields(200);
 
-  const rows = db.exec<{ fields: string }>(
-    "SELECT fields FROM notes ORDER BY RANDOM() LIMIT 200"
-  );
-
-  const allText = rows
-    .map((r) => {
+  const allText = fieldStrings
+    .map((fieldsStr) => {
       try {
-        const fields = JSON.parse(r.fields) as Record<string, string>;
+        const fields = JSON.parse(fieldsStr) as Record<string, string>;
         return Object.values(fields).join(" ");
       } catch {
         return "";

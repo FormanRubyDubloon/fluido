@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useDeckStore, type DeckWithCounts } from "@/store/deck-store";
-import { getDb } from "@/platform/adapter";
+import { renameDeck, deleteDeck, resetDeckProgress, getNoteTypesForDeck, updateNoteTypeTemplates } from "@/lib/queries";
 import { ImportButton } from "./ImportButton";
 
 interface DeckBrowserProps {
@@ -97,66 +97,23 @@ function DeckRow({
     }
   }, [renaming]);
 
-  const handleRename = () => {
+  const handleRename = async () => {
     const trimmed = renameValue.trim();
     if (trimmed && trimmed !== deck.name) {
-      const db = getDb();
-      db.run("UPDATE decks SET name = ?, updated_at = ? WHERE id = ?", [
-        trimmed,
-        new Date().toISOString(),
-        deck.id,
-      ]);
-      db.persist();
+      await renameDeck(deck.id, trimmed);
       onRefresh();
     }
     setRenaming(false);
   };
 
-  const handleDelete = () => {
-    const db = getDb();
-    db.transaction(() => {
-      db.run(
-        `DELETE FROM review_logs WHERE card_id IN (SELECT id FROM cards WHERE deck_id = ?)`,
-        [deck.id]
-      );
-      db.run(
-        `DELETE FROM card_states WHERE card_id IN (SELECT id FROM cards WHERE deck_id = ?)`,
-        [deck.id]
-      );
-      db.run("DELETE FROM cards WHERE deck_id = ?", [deck.id]);
-      db.run(
-        `DELETE FROM notes WHERE id NOT IN (SELECT DISTINCT note_id FROM cards)`
-      );
-      db.run(
-        `DELETE FROM note_types WHERE id NOT IN (SELECT DISTINCT note_type_id FROM notes)`
-      );
-      db.run("DELETE FROM decks WHERE id = ?", [deck.id]);
-    });
-    db.persist();
+  const handleDelete = async () => {
+    await deleteDeck(deck.id);
     setShowDeleteConfirm(false);
     onRefresh();
   };
 
-  const handleReset = () => {
-    const db = getDb();
-    db.transaction(() => {
-      db.run(
-        `DELETE FROM review_logs WHERE card_id IN (SELECT id FROM cards WHERE deck_id = ?)`,
-        [deck.id]
-      );
-      db.run(
-        `UPDATE card_states SET
-          difficulty = 0, stability = 0, due = ?, interval = 0,
-          reps = 0, lapses = 0, last_review = NULL, updated_at = ?
-        WHERE card_id IN (SELECT id FROM cards WHERE deck_id = ?)`,
-        [new Date().toISOString(), new Date().toISOString(), deck.id]
-      );
-      db.run(
-        `UPDATE cards SET card_type = 'new', updated_at = ? WHERE deck_id = ?`,
-        [new Date().toISOString(), deck.id]
-      );
-    });
-    db.persist();
+  const handleReset = async () => {
+    await resetDeckProgress(deck.id);
     setShowResetConfirm(false);
     onRefresh();
   };
@@ -391,41 +348,25 @@ function EditTemplatesModal({
   deckName: string;
   onClose: () => void;
 }) {
-  const db = getDb();
-
-  const noteTypeIds = db.exec<{ note_type_id: string }>(
-    `SELECT DISTINCT n.note_type_id FROM notes n
-     JOIN cards c ON c.note_id = n.id
-     WHERE c.deck_id = ?`,
-    [deckId]
-  );
-
   const [noteTypes, setNoteTypes] = useState<NoteTypeWithTemplates[]>([]);
   const [activeNtIndex, setActiveNtIndex] = useState(0);
   const [activeTmplIndex, setActiveTmplIndex] = useState(0);
   const [editingCss, setEditingCss] = useState(false);
 
   useEffect(() => {
-    const nts: NoteTypeWithTemplates[] = [];
-
-    for (const row of noteTypeIds) {
-      const nt = db.exec<{ id: string; name: string; card_templates: string }>(
-        "SELECT id, name, card_templates FROM note_types WHERE id = ?",
-        [row.note_type_id]
-      );
-      if (nt.length === 0) continue;
-
-      const templates: TemplateData[] = JSON.parse(nt[0]!.card_templates);
-      nts.push({
-        id: nt[0]!.id,
-        name: nt[0]!.name,
-        templates,
-        css: templates[0]?.css ?? "",
+    getNoteTypesForDeck(deckId).then((rows) => {
+      const nts: NoteTypeWithTemplates[] = rows.map((nt) => {
+        const templates: TemplateData[] = JSON.parse(nt.card_templates);
+        return {
+          id: nt.id,
+          name: nt.name,
+          templates,
+          css: templates[0]?.css ?? "",
+        };
       });
-    }
-
-    setNoteTypes(nts);
-  }, []);
+      setNoteTypes(nts);
+    });
+  }, [deckId]);
 
   const activeNt = noteTypes[activeNtIndex];
   const activeTmpl = activeNt?.templates[activeTmplIndex];
@@ -465,15 +406,10 @@ function EditTemplatesModal({
     [activeNtIndex]
   );
 
-  const handleSave = () => {
+  const handleSave = async () => {
     for (const nt of noteTypes) {
-      const templatesJson = JSON.stringify(nt.templates);
-      db.run(
-        "UPDATE note_types SET card_templates = ?, updated_at = ? WHERE id = ?",
-        [templatesJson, new Date().toISOString(), nt.id]
-      );
+      await updateNoteTypeTemplates(nt.id, JSON.stringify(nt.templates));
     }
-    db.persist();
     onClose();
   };
 
