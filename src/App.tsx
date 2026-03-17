@@ -153,12 +153,15 @@ export default function App() {
           }} />
         )}
         {reviewPendingDeckId && (
-          <SyncCheckModal onReady={() => {
-            const deckId = reviewPendingDeckId;
-            setReviewPendingDeckId(null);
-            loadDecks();
-            startSession(deckId);
-          }} />
+          <SyncCheckModal
+            onReady={() => {
+              const deckId = reviewPendingDeckId;
+              setReviewPendingDeckId(null);
+              loadDecks();
+              startSession(deckId);
+            }}
+            onCancel={() => setReviewPendingDeckId(null)}
+          />
         )}
         {currentView === "stats" && <StatsPage />}
         {currentView === "settings" && <SettingsPanel />}

@@ -4,6 +4,7 @@ import { useSyncStore } from "@/store/sync-store";
 
 interface SyncCheckModalProps {
   onReady: () => void;
+  onCancel: () => void;
 }
 
 export function SyncCheckModal({ onReady }: SyncCheckModalProps) {
@@ -85,20 +86,29 @@ export function SyncCheckModal({ onReady }: SyncCheckModalProps) {
           Last cloud review: {formattedTime}
         </p>
 
-        <div className="flex gap-3">
+        <div className="flex flex-col gap-3">
+          <div className="flex gap-3">
+            <button
+              onClick={handleUseLocal}
+              className="flex-1 px-4 py-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700
+                         hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+            >
+              Use local
+            </button>
+            <button
+              onClick={handleUseCloud}
+              className="flex-1 px-4 py-3 text-sm rounded-lg bg-blue-600 text-white font-medium
+                         hover:bg-blue-700 transition-colors"
+            >
+              Use cloud
+            </button>
+          </div>
           <button
-            onClick={handleUseLocal}
-            className="flex-1 px-4 py-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700
-                       hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+            onClick={onCancel}
+            className="w-full px-4 py-2 text-xs text-gray-400 dark:text-gray-500
+                       hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
           >
-            Use local
-          </button>
-          <button
-            onClick={handleUseCloud}
-            className="flex-1 px-4 py-3 text-sm rounded-lg bg-blue-600 text-white font-medium
-                       hover:bg-blue-700 transition-colors"
-          >
-            Use cloud
+            Cancel
           </button>
         </div>
       </div>
