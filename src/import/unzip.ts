@@ -157,7 +157,8 @@ export async function unzipApkg(buffer: ArrayBuffer): Promise<ApkgContents> {
   for (const [numericName, originalName] of Object.entries(mediaMap)) {
     const file = zip.file(numericName);
     if (file) {
-      const data = await file.async("uint8array");
+      const raw = await file.async("uint8array");
+      const data = tryZstdDecompress(raw);
       mediaFiles.set(originalName, data);
     } else {
       console.warn(

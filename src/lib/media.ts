@@ -21,6 +21,16 @@ function sanitizeFilename(filename: string): string {
   return `${hash}${ext}`;
 }
 
+function mimeFromFilename(filename: string): string {
+  const ext = filename.split(".").pop()?.toLowerCase() ?? "";
+  const map: Record<string, string> = {
+    jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", gif: "image/gif",
+    webp: "image/webp", svg: "image/svg+xml", mp3: "audio/mpeg", ogg: "audio/ogg",
+    wav: "audio/wav", mp4: "video/mp4", ttf: "font/ttf", otf: "font/otf",
+  };
+  return map[ext] ?? "application/octet-stream";
+}
+
 /** Deterministic string hash → hex string */
 function djb2Hash(str: string): string {
   let hash = 5381;
@@ -71,7 +81,23 @@ async function resolveUrl(
 
   if (error || !data) return "";
 
-  const url = URL.createObjectURL(data);
+  // Supabase download() can return zstd-compressed data.
+  // Use createSignedUrl + fetch so the browser handles decompression.
+  const { data: signedData } = await supabase.storage
+    .from("media")
+    .createSignedUrl(storagePath, 3600);
+
+  if (!signedData?.signedUrl) return "";
+
+  const response = await fetch(signedData.signedUrl, { mode: "cors" });
+  if (!response.ok) return "";
+
+  const blob = await response.blob();
+  const correctType = mimeFromFilename(filename);
+  const typedBlob = correctType !== blob.type
+    ? new Blob([blob], { type: correctType })
+    : blob;
+  const url = URL.createObjectURL(typedBlob);
   urlCache.set(cacheKey, url);
   return url;
 }
@@ -93,7 +119,7 @@ export async function uploadMedia(
   const storagePath = `${userId}/${deckId}/${sanitizeFilename(filename)}`;
 
   await supabase.storage.from("media").upload(storagePath, data, {
-    contentType: "application/octet-stream",
+    contentType: mimeFromFilename(filename),
     upsert: true,
   });
 }
