@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { motion } from "framer-motion";
 import { useReviewStore } from "@/store/review-store";
 import { useSettingsStore } from "@/store/settings-store";
 import { createFsrsScheduler } from "@/srs/fsrs";
@@ -6,7 +7,7 @@ import { renderCard } from "@/renderer/anki-template";
 import { useKeyboard } from "@/hooks/useKeyboard";
 import { Icon } from "@/components/ui/Icon";
 import { SessionHeader } from "./SessionHeader";
-import { CardFace } from "./CardFace";
+import { FlipCard } from "./FlipCard";
 import { RatingBar } from "./RatingBar";
 import { SessionComplete } from "./SessionComplete";
 import type { Rating, SchedulePreview } from "@/srs/types";
@@ -46,7 +47,6 @@ export function ReviewSession({ onEnd }: ReviewSessionProps) {
   const [flash, setFlash] = useState<Rating | null>(null);
 
   const cardContainerRef = useRef<HTMLDivElement>(null);
-  // Keep a silent Audio element unlocked by the first tap on iOS
   const audioUnlocked = useRef(false);
 
   const currentCard = queue[currentIndex];
@@ -113,16 +113,20 @@ export function ReviewSession({ onEnd }: ReviewSessionProps) {
     const container = cardContainerRef.current;
     if (!container) return;
 
+    // Only play audio from the currently visible face
+    const face = isRevealed ? "back" : "front";
+    const faceEl = container.querySelector(`[data-face="${face}"]`);
+    if (!faceEl) return;
+
     const audioElements = Array.from(
-      container.querySelectorAll<HTMLAudioElement>("audio[data-autoplay]")
+      faceEl.querySelectorAll<HTMLAudioElement>("audio[data-autoplay]")
     );
     playSequentially(audioElements);
-  }, []);
+  }, [isRevealed]);
 
-  // Auto-play audio when card content changes (non-mobile fallback)
+  // Auto-play audio when card content changes
   useEffect(() => {
     if (loading) return;
-    // Small delay to let DOM update
     const timer = setTimeout(playAudioInContainer, 50);
     return () => clearTimeout(timer);
   }, [isRevealed, currentIndex, loading, playAudioInContainer]);
@@ -151,15 +155,17 @@ export function ReviewSession({ onEnd }: ReviewSessionProps) {
     if (!isRevealed) {
       stopAudio();
       revealCard();
-      // Play back-side audio directly from this gesture handler (important for mobile)
       setTimeout(() => {
         const container = cardContainerRef.current;
         if (!container) return;
+        // Play back-side audio after flip completes
+        const backFace = container.querySelector('[data-face="back"]');
+        if (!backFace) return;
         const audioElements = Array.from(
-          container.querySelectorAll<HTMLAudioElement>("audio[data-autoplay]")
+          backFace.querySelectorAll<HTMLAudioElement>("audio[data-autoplay]")
         );
         playSequentially(audioElements);
-      }, 100);
+      }, 550);
     }
   }, [isRevealed, stopAudio, revealCard]);
 
@@ -171,12 +177,14 @@ export function ReviewSession({ onEnd }: ReviewSessionProps) {
         setFlash(null);
         stopAudio();
         rateCard(rating);
-        // Play next card's audio from this gesture chain (important for mobile)
         setTimeout(() => {
           const container = cardContainerRef.current;
           if (!container) return;
+          // Play front-side audio of the next card
+          const frontFace = container.querySelector('[data-face="front"]');
+          if (!frontFace) return;
           const audioElements = Array.from(
-            container.querySelectorAll<HTMLAudioElement>("audio[data-autoplay]")
+            frontFace.querySelectorAll<HTMLAudioElement>("audio[data-autoplay]")
           );
           playSequentially(audioElements);
         }, 200);
@@ -243,27 +251,27 @@ export function ReviewSession({ onEnd }: ReviewSessionProps) {
         onEnd={handleEnd}
       />
 
-      <div
-        className="flex-1 flex flex-col items-center justify-center cursor-pointer select-none"
-        onClick={!isRevealed ? handleFlip : undefined}
-      >
-        <div
-          ref={cardContainerRef}
-          className="w-full rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-hidden relative"
-        >
-          <div
-            className={`absolute inset-0 pointer-events-none z-10 rounded-2xl transition-opacity duration-200 ease-in-out ${flash ? FLASH_COLORS[flash] + " opacity-100" : "opacity-0"}`}
+      <div className="flex-1 flex flex-col items-center justify-center">
+        <div className="w-full relative">
+          {/* Flash overlay */}
+          <motion.div
+            className={`absolute inset-0 pointer-events-none z-10 rounded-2xl ${flash ? FLASH_COLORS[flash] : ""}`}
+            animate={{ opacity: flash ? 1 : 0 }}
+            transition={{ duration: flash ? 0.05 : 0.2 }}
           />
 
-          {!isRevealed ? (
-            <CardFace html={frontHtml} css={cardCss} />
-          ) : (
-            <CardFace html={backHtml} css={cardCss} />
-          )}
+          <FlipCard
+            ref={cardContainerRef}
+            frontHtml={frontHtml}
+            backHtml={backHtml}
+            css={cardCss}
+            isRevealed={isRevealed}
+            onFlip={handleFlip}
+          />
         </div>
 
         {!isRevealed && (
-          <p className="mt-4 text-sm text-gray-400 dark:text-gray-500">
+          <p className="mt-4 text-sm text-muted-foreground">
             Tap or press space to reveal
           </p>
         )}
@@ -277,7 +285,7 @@ export function ReviewSession({ onEnd }: ReviewSessionProps) {
         )}
 
         {lastUndo && (
-          <p className="text-center mt-2 text-xs text-gray-400 dark:text-gray-500">
+          <p className="text-center mt-2 text-xs text-muted-foreground">
             Ctrl+Z to undo
           </p>
         )}
@@ -295,7 +303,6 @@ function playSequentially(elements: HTMLAudioElement[], index = 0): void {
     playSequentially(elements, index + 1);
   };
   current.play().catch(() => {
-    // Skip to next if blocked
     playSequentially(elements, index + 1);
   });
 }

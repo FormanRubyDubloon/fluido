@@ -1,4 +1,5 @@
 import { Icon } from "@/components/ui/Icon";
+import { Button } from "@/components/ui/button";
 
 interface SidebarProps {
   currentView: string;
@@ -16,21 +17,14 @@ export function Sidebar({ currentView, onNavigate }: SidebarProps) {
     <ul className="space-y-1">
       {NAV_ITEMS.map((item) => (
         <li key={item.id}>
-          <button
+          <Button
+            variant={currentView === item.id ? "secondary" : "ghost"}
+            className="w-full justify-start gap-3"
             onClick={() => onNavigate(item.id)}
-            className={`
-              flex items-center gap-3 w-full px-3 py-3 rounded-lg text-left
-              transition-colors text-sm font-medium
-              ${
-                currentView === item.id
-                  ? "bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
-                  : "text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
-              }
-            `}
           >
             <Icon name={item.icon} size={20} filled={currentView === item.id} />
             {item.label}
-          </button>
+          </Button>
         </li>
       ))}
     </ul>

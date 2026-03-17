@@ -1,3 +1,4 @@
+import { motion } from "framer-motion";
 import { useSettingsStore } from "@/store/settings-store";
 import type { Rating } from "@/srs/types";
 import type { SchedulePreview } from "@/srs/types";
@@ -35,14 +36,17 @@ export function RatingBar({ preview, onRate }: RatingBarProps) {
 
   return (
     <div className="flex gap-2 w-full max-w-lg mx-auto">
-      {buttons.map((btn) => (
-        <button
+      {buttons.map((btn, index) => (
+        <motion.button
           key={btn.rating}
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: index * 0.05, duration: 0.2 }}
           onClick={() => onRate(btn.rating)}
           className={`
             flex-1 flex flex-col items-center justify-center gap-1
             py-3 rounded-xl text-white font-medium
-            transition-colors min-h-[60px]
+            transition-colors min-h-[60px] cursor-pointer
             ${btn.color}
           `}
         >
@@ -50,7 +54,7 @@ export function RatingBar({ preview, onRate }: RatingBarProps) {
           <span className="text-xs opacity-80">
             {formatInterval(getInterval(preview, btn.rating))}
           </span>
-        </button>
+        </motion.button>
       ))}
     </div>
   );

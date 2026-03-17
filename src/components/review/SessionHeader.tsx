@@ -1,4 +1,5 @@
 import { Icon } from "@/components/ui/Icon";
+import { Button } from "@/components/ui/button";
 
 interface SessionHeaderProps {
   newCount: number;
@@ -15,15 +16,9 @@ export function SessionHeader({
 }: SessionHeaderProps) {
   return (
     <div className="flex items-center justify-between py-2">
-      <button
-        onClick={onEnd}
-        className="flex items-center justify-center w-11 h-11 rounded-lg
-                   text-gray-500 hover:text-gray-700 hover:bg-gray-100
-                   dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-gray-800
-                   transition-colors text-sm"
-      >
+      <Button variant="ghost" size="icon" onClick={onEnd}>
         <Icon name="close" size={20} />
-      </button>
+      </Button>
 
       <div className="flex items-center gap-4 text-sm font-medium tabular-nums">
         {newCount > 0 && (
@@ -41,7 +36,7 @@ export function SessionHeader({
         )}
       </div>
 
-      <div className="w-11" />
+      <div className="w-10" />
     </div>
   );
 }

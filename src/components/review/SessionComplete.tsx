@@ -1,5 +1,7 @@
+import { motion } from "framer-motion";
 import { formatDuration } from "@/lib/time";
 import { Icon } from "@/components/ui/Icon";
+import { Button } from "@/components/ui/button";
 
 interface SessionCompleteProps {
   cardsReviewed: number;
@@ -22,13 +24,39 @@ export function SessionComplete({
 
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center max-w-md mx-auto">
-      <div className="text-blue-600 mb-4"><Icon name="celebration" size={48} /></div>
-      <h2 className="text-2xl font-semibold mb-2">Session Complete</h2>
-      <p className="text-gray-500 dark:text-gray-400 mb-8">
-        Nice work! Here&apos;s how you did.
-      </p>
+      <motion.div
+        className="text-blue-600 mb-4"
+        initial={{ scale: 0 }}
+        animate={{ scale: 1 }}
+        transition={{ type: "spring", stiffness: 200, damping: 15 }}
+      >
+        <Icon name="celebration" size={48} />
+      </motion.div>
 
-      <div className="w-full space-y-3 mb-8">
+      <motion.h2
+        className="text-2xl font-semibold mb-2"
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.15 }}
+      >
+        Session Complete
+      </motion.h2>
+
+      <motion.p
+        className="text-muted-foreground mb-8"
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.2 }}
+      >
+        Nice work! Here&apos;s how you did.
+      </motion.p>
+
+      <motion.div
+        className="w-full space-y-3 mb-8"
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3 }}
+      >
         <StatRow label="Cards reviewed" value={String(cardsReviewed)} />
         <StatRow label="Time" value={formatDuration(elapsed)} />
         <StatRow label="Retention" value={`${retention}%`} />
@@ -38,15 +66,17 @@ export function SessionComplete({
           <span className="text-green-500">Good: {ratingsGiven[3] ?? 0}</span>
           <span className="text-blue-500">Easy: {ratingsGiven[4] ?? 0}</span>
         </div>
-      </div>
+      </motion.div>
 
-      <button
-        onClick={onDone}
-        className="px-6 py-3 rounded-xl bg-blue-600 text-white font-medium
-                   hover:bg-blue-700 active:bg-blue-800 transition-colors"
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.45 }}
       >
-        Back to Decks
-      </button>
+        <Button size="lg" onClick={onDone}>
+          Back to Decks
+        </Button>
+      </motion.div>
     </div>
   );
 }
@@ -54,7 +84,7 @@ export function SessionComplete({
 function StatRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex justify-between text-sm">
-      <span className="text-gray-500 dark:text-gray-400">{label}</span>
+      <span className="text-muted-foreground">{label}</span>
       <span className="font-medium">{value}</span>
     </div>
   );
