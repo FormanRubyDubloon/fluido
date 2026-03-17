@@ -9,9 +9,25 @@ import { supabase } from "./supabase";
 const urlCache = new Map<string, string>();
 const inflight = new Map<string, Promise<string>>();
 
-/** Sanitize a filename for Supabase Storage (no spaces or special chars) */
+/** Sanitize a filename for Supabase Storage.
+ *  If it contains non-ASCII or spaces, hash it to a safe ASCII name. */
 function sanitizeFilename(filename: string): string {
-  return filename.replace(/ /g, "_");
+  if (/^[a-zA-Z0-9._-]+$/.test(filename)) return filename;
+
+  // Hash the original name but keep the extension
+  const dotIdx = filename.lastIndexOf(".");
+  const ext = dotIdx > 0 ? filename.substring(dotIdx) : "";
+  const hash = djb2Hash(filename);
+  return `${hash}${ext}`;
+}
+
+/** Deterministic string hash → hex string */
+function djb2Hash(str: string): string {
+  let hash = 5381;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) + hash + str.charCodeAt(i)) >>> 0;
+  }
+  return hash.toString(16).padStart(8, "0");
 }
 
 export async function getMediaUrl(
