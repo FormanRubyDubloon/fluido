@@ -103,7 +103,7 @@ export function CardFace({ html, css }: CardFaceProps) {
       className="card-content prose prose-sm dark:prose-invert max-w-none
                  text-center
                  px-6 py-8
-                 [&_img]:max-w-full [&_img]:h-auto [&_img]:mx-auto [&_img]:rounded-lg"
+                 [&_img]:max-w-full [&_img]:h-auto [&_img]:mx-auto [&_img]:rounded-lg [&_img]:block"
       style={chosenFont ? { fontFamily: `"${chosenFont}", system-ui, sans-serif` } : undefined}
       dangerouslySetInnerHTML={{ __html: cleanHtml }}
     />

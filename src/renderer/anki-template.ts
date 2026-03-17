@@ -19,18 +19,23 @@ function extractFieldNames(template: string): string[] {
   const regex = /\{\{([^}]+)\}\}/g;
   let match;
   while ((match = regex.exec(template)) !== null) {
-    const name = match[1]!.trim();
-    if (
-      name.startsWith("#") || name.startsWith("/") || name.startsWith("^") ||
-      name.startsWith("type:") || name.startsWith("furigana:") ||
-      name === "FrontSide"
-    ) continue;
+    let name = match[1]!.trim();
 
-    if (name.startsWith("cloze:")) {
-      names.push(name.replace("cloze:", ""));
-    } else {
-      names.push(name);
+    // Skip closing tags
+    if (name.startsWith("/")) continue;
+    if (name === "FrontSide") continue;
+
+    // Conditional blocks reference the field — include it
+    if (name.startsWith("#") || name.startsWith("^")) {
+      name = name.substring(1).trim();
     }
+
+    // Strip prefixes
+    if (name.startsWith("type:")) name = name.replace("type:", "");
+    if (name.startsWith("cloze:")) name = name.replace("cloze:", "");
+    if (name.startsWith("furigana:")) name = name.replace("furigana:", "");
+
+    if (name) names.push(name);
   }
   return [...new Set(names)];
 }
@@ -147,6 +152,14 @@ export async function renderCard(
 
   let frontHtml = renderFields(frontFieldNames, fields, isCloze, clozeIndex, false);
   let backHtml = renderFields(backFieldNames, fields, isCloze, clozeIndex, true);
+
+  // If template field extraction produced nothing, show all non-empty fields
+  if (!frontHtml.trim()) {
+    frontHtml = renderAllFields(fields);
+  }
+  if (!backHtml.trim()) {
+    backHtml = renderAllFields(fields);
+  }
 
   frontHtml = sanitiseHtml(frontHtml);
   backHtml = sanitiseHtml(backHtml);
