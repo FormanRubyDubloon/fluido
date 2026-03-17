@@ -113,10 +113,27 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
       },
     };
 
+    // If rated Again, re-queue the card with updated state
+    let updatedQueue = queue;
+    if (rating === 1) {
+      const requeued: QueueCard = {
+        ...card,
+        cardType: result.newCardType,
+        difficulty: result.newState.difficulty,
+        stability: result.newState.stability,
+        due: result.newState.due,
+        interval: result.newState.interval,
+        reps: result.newState.reps,
+        lapses: result.newState.lapses,
+      };
+      updatedQueue = [...queue, requeued];
+    }
+
     const nextIndex = currentIndex + 1;
 
-    if (nextIndex >= queue.length) {
+    if (nextIndex >= updatedQueue.length) {
       set({
+        queue: updatedQueue,
         sessionStats: newStats,
         isRevealed: false,
         lastUndo: result.snapshot,
@@ -124,6 +141,7 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
       });
     } else {
       set({
+        queue: updatedQueue,
         currentIndex: nextIndex,
         isRevealed: false,
         cardStartTime: Date.now(),
