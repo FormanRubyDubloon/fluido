@@ -22,24 +22,31 @@ export const FlipCard = forwardRef<HTMLDivElement, FlipCardProps>(
         <motion.div
           animate={{ rotateY: isRevealed ? 180 : 0 }}
           transition={{ duration: 0.5, ease: [0.4, 0, 0.2, 1] }}
-          style={{ transformStyle: "preserve-3d", position: "relative" }}
+          style={{ transformStyle: "preserve-3d" }}
+          className="relative"
         >
-          {/* Front face */}
+          {/* Front face — always in flow, sets min height */}
           <div
             data-face="front"
-            className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-hidden"
-            style={{ backfaceVisibility: "hidden" }}
+            className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900"
+            style={{
+              backfaceVisibility: "hidden",
+              visibility: isRevealed ? "hidden" : "visible",
+            }}
           >
             <CardFace html={frontHtml} css={css} />
           </div>
 
-          {/* Back face */}
+          {/* Back face — absolute but only visible when flipped */}
           <div
             data-face="back"
-            className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-hidden absolute inset-0"
+            className={`rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 ${
+              isRevealed ? "relative" : "absolute inset-0"
+            }`}
             style={{
               backfaceVisibility: "hidden",
               transform: "rotateY(180deg)",
+              visibility: isRevealed ? "visible" : "hidden",
             }}
           >
             <CardFace html={backHtml} css={css} />
