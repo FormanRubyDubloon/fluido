@@ -234,8 +234,8 @@ export async function getReviewQueue(
       lapses: row.lapses as number,
       lastReview: row.last_review as string | null,
       noteTypeId: row.note_type_id as string,
-      fields: JSON.parse(row.fields as string),
-      tags: JSON.parse(row.tags as string),
+      fields: typeof row.fields === "string" ? JSON.parse(row.fields) : row.fields,
+      tags: typeof row.tags === "string" ? JSON.parse(row.tags) : row.tags,
     })
   );
 }

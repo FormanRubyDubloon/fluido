@@ -23,7 +23,9 @@ export async function renderCard(
     };
   }
 
-  const templates: CardTemplate[] = JSON.parse(noteType.card_templates);
+  const templates: CardTemplate[] = typeof noteType.card_templates === "string"
+    ? JSON.parse(noteType.card_templates)
+    : noteType.card_templates;
 
   const isCloze = templates.length === 1 && (
     templates[0]!.front.includes("{{cloze:") ||

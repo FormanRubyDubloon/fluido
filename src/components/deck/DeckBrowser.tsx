@@ -356,7 +356,9 @@ function EditTemplatesModal({
   useEffect(() => {
     getNoteTypesForDeck(deckId).then((rows) => {
       const nts: NoteTypeWithTemplates[] = rows.map((nt) => {
-        const templates: TemplateData[] = JSON.parse(nt.card_templates);
+        const templates: TemplateData[] = typeof nt.card_templates === "string"
+          ? JSON.parse(nt.card_templates)
+          : nt.card_templates;
         return {
           id: nt.id,
           name: nt.name,

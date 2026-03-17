@@ -25,7 +25,9 @@ export async function detectLanguagesFromCards(): Promise<{ id: string; name: st
   const allText = fieldStrings
     .map((fieldsStr) => {
       try {
-        const fields = JSON.parse(fieldsStr) as Record<string, string>;
+        const fields = typeof fieldsStr === "string"
+          ? JSON.parse(fieldsStr) as Record<string, string>
+          : fieldsStr as unknown as Record<string, string>;
         return Object.values(fields).join(" ");
       } catch {
         return "";
