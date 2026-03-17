@@ -18,6 +18,7 @@ import { SettingsPanel } from "@/components/settings/SettingsPanel";
 import { LoginPage } from "@/components/auth/LoginPage";
 import { SyncBanner } from "@/components/auth/SyncBanner";
 import { SyncCheckModal } from "@/components/review/SyncCheckModal";
+import { MediaPrefetchModal } from "@/components/review/MediaPrefetchModal";
 
 type View = "decks" | "stats" | "settings";
 
@@ -31,6 +32,7 @@ export default function App() {
     hasCloud: false,
   });
   const [reviewPendingDeckId, setReviewPendingDeckId] = useState<string | null>(null);
+  const [prefetchDeckId, setPrefetchDeckId] = useState<string | null>(null);
 
   const loadSettings = useSettingsStore((s) => s.loadSettings);
   const darkMode = useSettingsStore((s) => s.darkMode);
@@ -148,7 +150,7 @@ export default function App() {
             if (user) {
               setReviewPendingDeckId(deckId);
             } else {
-              startSession(deckId);
+              setPrefetchDeckId(deckId);
             }
           }} />
         )}
@@ -157,10 +159,26 @@ export default function App() {
             onReady={() => {
               const deckId = reviewPendingDeckId;
               setReviewPendingDeckId(null);
+              setPrefetchDeckId(deckId);
+            }}
+            onCancel={() => setReviewPendingDeckId(null)}
+          />
+        )}
+        {prefetchDeckId && (
+          <MediaPrefetchModal
+            deckId={prefetchDeckId}
+            onReady={() => {
+              const deckId = prefetchDeckId;
+              setPrefetchDeckId(null);
               loadDecks();
               startSession(deckId);
             }}
-            onCancel={() => setReviewPendingDeckId(null)}
+            onCancel={() => {
+              const deckId = prefetchDeckId;
+              setPrefetchDeckId(null);
+              loadDecks();
+              startSession(deckId);
+            }}
           />
         )}
         {currentView === "stats" && <StatsPage />}

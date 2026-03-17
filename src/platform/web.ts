@@ -1,7 +1,8 @@
-import { get, set, keys, del } from "idb-keyval";
+import { get, set, del, keys } from "idb-keyval";
 import JSZip from "jszip";
 import type { DbAdapter, FileAdapter, PlatformAdapter } from "./adapter";
 import { IDB_DATABASE_KEY, IDB_MEDIA_PREFIX } from "@/lib/constants";
+import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type SqlJsDatabase = any;
@@ -9,7 +10,7 @@ type SqlJsDatabase = any;
 const IDB_FILE_HANDLE_KEY = "fluido-file-handle";
 
 // ---------------------------------------------------------------------------
-// Database Adapter (sql.js / WASM) with File System Access API persistence
+// Database Adapter
 // ---------------------------------------------------------------------------
 
 class WebDbAdapter implements DbAdapter {
@@ -31,7 +32,6 @@ class WebDbAdapter implements DbAdapter {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const SQL = await (initSqlJs as any)({ wasmBinary });
 
-    // Try to restore from linked file first, then fall back to IndexedDB
     const restored = await this.tryRestoreFromFile(SQL);
     if (!restored) {
       const persisted = await get<Uint8Array>(IDB_DATABASE_KEY);
@@ -48,13 +48,11 @@ class WebDbAdapter implements DbAdapter {
       const handle = await get<FileSystemFileHandle>(IDB_FILE_HANDLE_KEY);
       if (!handle) return false;
 
-      // Verify we still have permission
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const opts = { mode: "readwrite" } as any;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const permission = await (handle as any).queryPermission(opts);
       if (permission !== "granted") {
-        // Will need to re-request — store handle for later
         this.fileHandle = handle;
         return false;
       }
@@ -68,77 +66,47 @@ class WebDbAdapter implements DbAdapter {
         return true;
       }
     } catch {
-      // File handle expired or invalid — fall back
+      // Fall back
     }
     return false;
   }
 
-  /**
-   * Link a file on disk for auto-saving.
-   * Must be called from a user gesture (click handler).
-   */
   async linkSaveFile(): Promise<string> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handle = await (window as any).showSaveFilePicker({
       suggestedName: "fluido.db",
-      types: [
-        {
-          description: "SQLite Database",
-          accept: { "application/x-sqlite3": [".db"] },
-        },
-      ],
+      types: [{ description: "SQLite Database", accept: { "application/x-sqlite3": [".db"] } }],
     });
-
     this.fileHandle = handle;
     await set(IDB_FILE_HANDLE_KEY, handle);
-
-    // Write current database to the file immediately
     await this.persistToFile();
-
     return handle.name;
   }
 
-  /**
-   * Check if a save file is linked.
-   */
   async getSaveFileStatus(): Promise<{ linked: boolean; name: string | null; needsPermission: boolean }> {
     try {
       const handle = await get<FileSystemFileHandle>(IDB_FILE_HANDLE_KEY);
       if (!handle) return { linked: false, name: null, needsPermission: false };
-
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const permission = await (handle as any).queryPermission({ mode: "readwrite" });
       this.fileHandle = handle;
-
-      return {
-        linked: true,
-        name: handle.name,
-        needsPermission: permission !== "granted",
-      };
+      return { linked: true, name: handle.name, needsPermission: permission !== "granted" };
     } catch {
       return { linked: false, name: null, needsPermission: false };
     }
   }
 
-  /**
-   * Re-request permission for a previously linked file.
-   * Must be called from a user gesture.
-   */
   async requestFilePermission(): Promise<boolean> {
     if (!this.fileHandle) return false;
-
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const permission = await (this.fileHandle as any).requestPermission({ mode: "readwrite" });
       if (permission === "granted") {
-        // Restore from file
         const file = await this.fileHandle.getFile();
         const buffer = await file.arrayBuffer();
         if (buffer.byteLength > 0) {
           const sqlJsModule = await import("sql.js");
-          const initSqlJs = typeof sqlJsModule.default === "function"
-            ? sqlJsModule.default
-            : sqlJsModule;
+          const initSqlJs = typeof sqlJsModule.default === "function" ? sqlJsModule.default : sqlJsModule;
           const wasmResponse = await fetch("/sql-wasm.wasm");
           const wasmBinary = await wasmResponse.arrayBuffer();
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -149,15 +117,10 @@ class WebDbAdapter implements DbAdapter {
         }
         return true;
       }
-    } catch {
-      // Permission denied
-    }
+    } catch { /* denied */ }
     return false;
   }
 
-  /**
-   * Unlink the save file.
-   */
   async unlinkSaveFile(): Promise<void> {
     this.fileHandle = null;
     await del(IDB_FILE_HANDLE_KEY);
@@ -199,11 +162,8 @@ class WebDbAdapter implements DbAdapter {
   async persist(): Promise<void> {
     const db = this.getDb();
     const data = db.export();
-
-    // Always save to IndexedDB as fallback
     await set(IDB_DATABASE_KEY, data);
 
-    // Debounced save to file (avoids writing on every single card)
     if (this.fileHandle) {
       if (this.persistTimeout) clearTimeout(this.persistTimeout);
       this.persistTimeout = setTimeout(() => this.persistToFile(), 500);
@@ -212,12 +172,10 @@ class WebDbAdapter implements DbAdapter {
 
   private async persistToFile(): Promise<void> {
     if (!this.fileHandle || !this.db) return;
-
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const permission = await (this.fileHandle as any).queryPermission({ mode: "readwrite" });
       if (permission !== "granted") return;
-
       const data = this.db.export();
       const writable = await this.fileHandle.createWritable();
       await writable.write(data);
@@ -230,7 +188,7 @@ class WebDbAdapter implements DbAdapter {
   async close(): Promise<void> {
     if (this.persistTimeout) {
       clearTimeout(this.persistTimeout);
-      await this.persistToFile(); // Final flush
+      await this.persistToFile();
     }
     if (this.db) {
       await this.persist();
@@ -246,12 +204,15 @@ class WebDbAdapter implements DbAdapter {
 }
 
 // ---------------------------------------------------------------------------
-// File Adapter (IndexedDB blobs)
+// File Adapter — lazy media loading from cloud
 // ---------------------------------------------------------------------------
 
 function mediaKey(deckId: string, filename: string): string {
   return `${IDB_MEDIA_PREFIX}:${deckId}/${filename}`;
 }
+
+// Cache of in-flight downloads to avoid duplicate requests for the same file
+const inflight = new Map<string, Promise<string>>();
 
 class WebFileAdapter implements FileAdapter {
   async pickApkgFile(): Promise<ArrayBuffer> {
@@ -277,18 +238,62 @@ class WebFileAdapter implements FileAdapter {
 
   async getMediaUrl(deckId: string, filename: string): Promise<string> {
     const key = mediaKey(deckId, filename);
-    const data = await get<Uint8Array>(key);
-    if (!data) return "";
 
-    const ext = filename.split(".").pop()?.toLowerCase() ?? "";
-    const mimeMap: Record<string, string> = {
-      jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", gif: "image/gif",
-      webp: "image/webp", svg: "image/svg+xml", mp3: "audio/mpeg", ogg: "audio/ogg",
-      wav: "audio/wav", mp4: "video/mp4", ttf: "font/ttf", ttc: "font/collection", otf: "font/otf",
-    };
-    const mime = mimeMap[ext] ?? "application/octet-stream";
-    const blob = new Blob([new Uint8Array(data)], { type: mime });
-    return URL.createObjectURL(blob);
+    // 1. Check local IndexedDB
+    try {
+      const data = await get<Uint8Array>(key);
+      if (data) {
+        return createBlobUrl(filename, data);
+      }
+    } catch {
+      // IndexedDB error — try cloud
+    }
+
+    // 2. Try cloud if configured
+    if (isSupabaseConfigured()) {
+      // Deduplicate in-flight requests
+      if (inflight.has(key)) {
+        return inflight.get(key)!;
+      }
+
+      const promise = this.fetchFromCloud(deckId, filename, key);
+      inflight.set(key, promise);
+
+      try {
+        const url = await promise;
+        return url;
+      } finally {
+        inflight.delete(key);
+      }
+    }
+
+    return "";
+  }
+
+  private async fetchFromCloud(deckId: string, filename: string, localKey: string): Promise<string> {
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const userId = sessionData.session?.user?.id;
+      if (!userId) return "";
+
+      const storagePath = `${userId}/${deckId}/${filename}`;
+
+      const { data, error } = await supabase.storage
+        .from("media")
+        .download(storagePath);
+
+      if (error || !data) return "";
+
+      const buffer = await data.arrayBuffer();
+      const bytes = new Uint8Array(buffer);
+
+      // Cache locally for next time (fire and forget)
+      set(localKey, bytes).catch(() => {});
+
+      return createBlobUrl(filename, bytes);
+    } catch {
+      return "";
+    }
   }
 
   async exportBackup(): Promise<void> {
@@ -323,6 +328,18 @@ class WebFileAdapter implements FileAdapter {
   async importBackup(): Promise<void> {
     throw new Error("Import from backup not yet implemented");
   }
+}
+
+function createBlobUrl(filename: string, data: Uint8Array): string {
+  const ext = filename.split(".").pop()?.toLowerCase() ?? "";
+  const mimeMap: Record<string, string> = {
+    jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", gif: "image/gif",
+    webp: "image/webp", svg: "image/svg+xml", mp3: "audio/mpeg", ogg: "audio/ogg",
+    wav: "audio/wav", mp4: "video/mp4", ttf: "font/ttf", ttc: "font/collection", otf: "font/otf",
+  };
+  const mime = mimeMap[ext] ?? "application/octet-stream";
+  const blob = new Blob([new Uint8Array(data)], { type: mime });
+  return URL.createObjectURL(blob);
 }
 
 // ---------------------------------------------------------------------------

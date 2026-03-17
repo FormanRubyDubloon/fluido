@@ -1,7 +1,7 @@
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import { pushChangesToCloud, pushAllToCloud, pushCardReview } from "./push";
 import { pullAllFromCloud } from "./pull";
-import { pushMediaToCloud, pullMediaFromCloud } from "./media";
+import { pushMediaToCloud } from "./media";
 import { getDb } from "@/platform/adapter";
 import { checkFreshness } from "./freshness";
 
@@ -26,9 +26,9 @@ export async function getCurrentUserId(): Promise<string | null> {
 
 /**
  * Bidirectional sync:
- * 1. Check if cloud is newer → pull if so
+ * 1. Check if cloud is newer → pull data if so
  * 2. Push local changes
- * 3. Sync media both ways
+ * 3. Upload media (media downloads happen lazily when cards are rendered)
  */
 export async function fullSync(onProgress?: ProgressCallback): Promise<SyncResult | null> {
   const userId = await getCurrentUserId();
@@ -36,14 +36,13 @@ export async function fullSync(onProgress?: ProgressCallback): Promise<SyncResul
 
   let pulled = false;
 
-  // Step 1: Check freshness and pull if cloud is newer
   onProgress?.("Checking for updates…", 0);
   try {
     const freshness = await checkFreshness();
     if (freshness.status === "cloud-newer") {
       onProgress?.("Downloading cloud data…", 5);
       await pullAllFromCloud(userId, (stage, pct) => {
-        onProgress?.(stage, 5 + Math.round(pct * 0.3));
+        onProgress?.(stage, 5 + Math.round(pct * 0.35));
       });
       pulled = true;
     }
@@ -51,27 +50,19 @@ export async function fullSync(onProgress?: ProgressCallback): Promise<SyncResul
     console.warn("Freshness check failed, continuing with push:", e);
   }
 
-  // Step 2: Push local changes
-  onProgress?.("Uploading changes…", 35);
+  onProgress?.("Uploading changes…", 40);
   const pushResult = await pushChangesToCloud(userId, (stage, pct) => {
-    onProgress?.(stage, 35 + Math.round(pct * 0.3));
+    onProgress?.(stage, 40 + Math.round(pct * 0.3));
   });
 
-  // Step 3: Push settings
   if (pushResult.totalPushed > 0) {
-    onProgress?.("Uploading settings…", 65);
+    onProgress?.("Uploading settings…", 70);
     await pushSettings(userId);
   }
 
-  // Step 4: Sync media both ways
-  onProgress?.("Downloading media…", 70);
-  const mediaDownloaded = await pullMediaFromCloud(userId, (stage, pct) => {
-    onProgress?.(stage, 70 + Math.round(pct * 0.15));
-  });
-
-  onProgress?.("Uploading media…", 85);
-  const mediaUploaded = await pushMediaToCloud(userId, (stage, pct) => {
-    onProgress?.(stage, 85 + Math.round(pct * 0.15));
+  onProgress?.("Uploading media…", 75);
+  const media = await pushMediaToCloud(userId, (stage, pct) => {
+    onProgress?.(stage, 75 + Math.round(pct * 0.25));
   });
 
   onProgress?.("Done!", 100);
@@ -86,7 +77,7 @@ export async function fullSync(onProgress?: ProgressCallback): Promise<SyncResul
     decks: deckCount,
     cards: cardCount,
     reviewLogs: logCount,
-    media: mediaDownloaded + mediaUploaded,
+    media,
     incremental: true,
     totalPushed: pushResult.totalPushed,
     pulled,
@@ -94,7 +85,7 @@ export async function fullSync(onProgress?: ProgressCallback): Promise<SyncResul
 }
 
 /**
- * Full push only — used after import.
+ * Force full push — used after import.
  */
 export async function forceFullPush(onProgress?: ProgressCallback): Promise<SyncResult | null> {
   const userId = await getCurrentUserId();
@@ -133,7 +124,7 @@ export async function forceFullPush(onProgress?: ProgressCallback): Promise<Sync
 }
 
 /**
- * Full pull only — used from sync check modal.
+ * Full pull — data only. Media loads lazily when cards are rendered.
  */
 export async function fullPull(onProgress?: ProgressCallback): Promise<SyncResult | null> {
   const userId = await getCurrentUserId();
@@ -141,12 +132,7 @@ export async function fullPull(onProgress?: ProgressCallback): Promise<SyncResul
 
   onProgress?.("Downloading data…", 0);
   const result = await pullAllFromCloud(userId, (stage, pct) => {
-    onProgress?.(stage, Math.round(pct * 0.6));
-  });
-
-  onProgress?.("Downloading media…", 60);
-  const media = await pullMediaFromCloud(userId, (stage, pct) => {
-    onProgress?.(stage, 60 + Math.round(pct * 0.4));
+    onProgress?.(stage, Math.round(pct));
   });
 
   onProgress?.("Done!", 100);
@@ -155,7 +141,7 @@ export async function fullPull(onProgress?: ProgressCallback): Promise<SyncResul
     decks: result.decks,
     cards: result.cards,
     reviewLogs: result.reviewLogs,
-    media,
+    media: 0,
     incremental: false,
     totalPushed: 0,
     pulled: true,
