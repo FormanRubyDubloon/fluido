@@ -122,19 +122,17 @@ export async function pushMediaToCloud(
       Math.round((uploaded / toUpload.length) * 100)
     );
 
-    const { error } = await supabase.storage
-      .from("media")
-      .upload(storagePath, data, {
-        contentType: "application/octet-stream",
-        upsert: true,
-      });
-
-    if (error) {
-      console.warn(`Failed to upload ${storagePath}:`, error.message);
+    const ok = await uploadWithRetry(storagePath, data);
+    if (!ok) {
+      console.warn(`Failed to upload ${storagePath} after retries`);
     }
 
     alreadySynced.add(key);
     uploaded++;
+
+    if (uploaded % 10 === 9) {
+      await sleep(100);
+    }
 
     if (uploaded % 50 === 0) {
       saveSyncedMediaKeys(alreadySynced);
@@ -177,22 +175,86 @@ export async function pullMediaFromCloud(
         continue;
       }
 
-      const { data, error } = await supabase.storage
-        .from("media")
-        .download(storagePath);
-
-      if (error || !data) {
-        console.warn(`Failed to download ${storagePath}:`, error?.message);
-        continue;
+      const fileData = await downloadWithRetry(storagePath);
+      if (fileData) {
+        await set(localKey, new Uint8Array(fileData));
+        downloaded++;
       }
 
-      const buffer = await data.arrayBuffer();
-      await set(localKey, new Uint8Array(buffer));
-      downloaded++;
+      if (i % 10 === 9) {
+        await sleep(100);
+      }
     }
   }
 
   return downloaded;
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function downloadWithRetry(
+  storagePath: string,
+  maxRetries = 3
+): Promise<ArrayBuffer | null> {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    const { data, error } = await supabase.storage
+      .from("media")
+      .download(storagePath);
+
+    if (data) {
+      return data.arrayBuffer();
+    }
+
+    if (error) {
+      const status = (error as unknown as { statusCode?: number }).statusCode;
+      if (status === 502 || status === 429 || status === 503) {
+        const delay = Math.pow(2, attempt) * 500;
+        console.warn(`Retry ${attempt + 1}/${maxRetries} for ${storagePath} after ${delay}ms`);
+        await sleep(delay);
+        continue;
+      }
+      console.warn(`Failed to download ${storagePath}:`, error.message);
+      return null;
+    }
+  }
+
+  console.warn(`Gave up downloading ${storagePath} after ${maxRetries} retries`);
+  return null;
+}
+
+async function uploadWithRetry(
+  storagePath: string,
+  data: Uint8Array,
+  maxRetries = 3
+): Promise<boolean> {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    const { error } = await supabase.storage
+      .from("media")
+      .upload(storagePath, data, {
+        contentType: "application/octet-stream",
+        upsert: true,
+      });
+
+    if (!error) return true;
+
+    const status = (error as unknown as { statusCode?: number }).statusCode;
+    if (status === 502 || status === 429 || status === 503) {
+      const delay = Math.pow(2, attempt) * 500;
+      console.warn(`Upload retry ${attempt + 1}/${maxRetries} for ${storagePath} after ${delay}ms`);
+      await sleep(delay);
+      continue;
+    }
+
+    return false;
+  }
+
+  return false;
 }
 
 async function listFolders(prefix: string): Promise<string[]> {
