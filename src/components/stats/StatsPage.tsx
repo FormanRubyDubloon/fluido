@@ -106,7 +106,7 @@ export function StatsPage() {
 
 function StatCard({ label, value, color }: { label: string; value: string; color?: string }) {
   return (
-    <Card>
+    <Card className="py-0 gap-0 shadow-none">
       <CardContent className="p-3">
         <div className={`text-xl font-semibold tabular-nums ${color ?? ""}`}>{value}</div>
         <div className="text-xs text-muted-foreground mt-1">{label}</div>

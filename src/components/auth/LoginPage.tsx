@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useAuthStore } from "@/store/auth-store";
 import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 
@@ -44,28 +43,32 @@ export function LoginPage({ onAuthenticated }: LoginPageProps) {
             </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4" data-1p-group>
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
-              <Input
+              <input
                 id="email"
+                name="email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@example.com"
                 autoComplete="email"
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-base shadow-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:text-sm"
               />
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
-              <Input
+              <input
                 id="password"
+                name="password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder={mode === "signup" ? "At least 6 characters" : "Your password"}
                 autoComplete={mode === "signup" ? "new-password" : "current-password"}
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-base shadow-xs placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:text-sm"
               />
             </div>
 
