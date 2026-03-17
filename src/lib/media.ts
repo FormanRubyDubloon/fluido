@@ -78,6 +78,71 @@ export async function uploadMedia(
 }
 
 /**
+ * Prefetch all media files referenced by a set of card fields.
+ * Extracts [sound:filename] and src="filename" references,
+ * downloads them all, and caches as blob URLs.
+ */
+export async function prefetchMedia(
+  cards: { fields: Record<string, string> | string }[],
+  deckId = "shared"
+): Promise<number> {
+  const filenames = new Set<string>();
+  const soundRegex = /\[sound:([^\]]+)\]/g;
+  const srcRegex = /src="([^"]+)"/g;
+
+  for (const card of cards) {
+    const fieldsObj =
+      typeof card.fields === "string"
+        ? JSON.parse(card.fields)
+        : card.fields;
+    const text = Object.values(fieldsObj as Record<string, string>).join(" ");
+
+    let match;
+    while ((match = soundRegex.exec(text)) !== null) {
+      const fname = match[1]!;
+      if (!fname.startsWith("http") && !fname.startsWith("data:")) {
+        filenames.add(fname);
+      }
+    }
+    while ((match = srcRegex.exec(text)) !== null) {
+      const fname = match[1]!;
+      if (
+        !fname.startsWith("http") &&
+        !fname.startsWith("data:") &&
+        !fname.startsWith("blob:")
+      ) {
+        filenames.add(fname);
+      }
+    }
+  }
+
+  if (filenames.size === 0) return 0;
+
+  // Filter out already-cached files
+  const toFetch = [...filenames].filter(
+    (f) => !urlCache.has(`${deckId}/${f}`)
+  );
+
+  if (toFetch.length === 0) return 0;
+
+  // Download in parallel batches of 6
+  const BATCH = 6;
+  let downloaded = 0;
+
+  for (let i = 0; i < toFetch.length; i += BATCH) {
+    const batch = toFetch.slice(i, i + BATCH);
+    const results = await Promise.allSettled(
+      batch.map((f) => getMediaUrl(deckId, f))
+    );
+    downloaded += results.filter(
+      (r) => r.status === "fulfilled" && r.value !== ""
+    ).length;
+  }
+
+  return downloaded;
+}
+
+/**
  * Clear the URL cache (e.g. when signing out).
  */
 export function clearMediaCache(): void {

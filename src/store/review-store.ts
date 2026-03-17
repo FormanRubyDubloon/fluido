@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { buildQueue, type QueueCard } from "@/srs/queue";
 import { computeRating, revertRating, type UndoSnapshot } from "@/srs/rating";
+import { prefetchMedia } from "@/lib/media";
 import type { Rating } from "@/srs/types";
 
 interface SessionStats {
@@ -48,6 +49,12 @@ export const useReviewStore = create<ReviewState>((set, get) => ({
     set({ loading: true });
     try {
       const queue = await buildQueue(deckId, newCardsPerDay);
+
+      // Prefetch all media for the session (non-blocking for UI)
+      prefetchMedia(queue).catch((e) =>
+        console.warn("Media prefetch failed:", e)
+      );
+
       set({
         activeDeckId: deckId,
         inSession: true,
