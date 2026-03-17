@@ -1,11 +1,11 @@
 /**
- * Media URL resolution via Supabase Storage signed URLs.
- * Caches URLs in memory for the session lifetime.
+ * Media URL resolution via Supabase Storage.
+ * Downloads files and creates blob URLs to avoid COEP/CORS issues.
+ * Caches blob URLs in memory for the session lifetime.
  */
 
 import { supabase } from "./supabase";
 
-const SIGNED_URL_EXPIRY = 3600; // 1 hour
 const urlCache = new Map<string, string>();
 const inflight = new Map<string, Promise<string>>();
 
@@ -15,11 +15,9 @@ export async function getMediaUrl(
 ): Promise<string> {
   const key = `${deckId}/${filename}`;
 
-  // Return cached URL
   const cached = urlCache.get(key);
   if (cached) return cached;
 
-  // Deduplicate in-flight requests
   if (inflight.has(key)) return inflight.get(key)!;
 
   const promise = resolveUrl(deckId, filename, key);
@@ -45,14 +43,16 @@ async function resolveUrl(
 
   const storagePath = `${userId}/${deckId}/${filename}`;
 
+  // Download as blob to avoid COEP/CORS issues with signed URLs
   const { data, error } = await supabase.storage
     .from("media")
-    .createSignedUrl(storagePath, SIGNED_URL_EXPIRY);
+    .download(storagePath);
 
-  if (error || !data?.signedUrl) return "";
+  if (error || !data) return "";
 
-  urlCache.set(cacheKey, data.signedUrl);
-  return data.signedUrl;
+  const url = URL.createObjectURL(data);
+  urlCache.set(cacheKey, url);
+  return url;
 }
 
 /**
@@ -81,5 +81,8 @@ export async function uploadMedia(
  * Clear the URL cache (e.g. when signing out).
  */
 export function clearMediaCache(): void {
+  for (const url of urlCache.values()) {
+    URL.revokeObjectURL(url);
+  }
   urlCache.clear();
 }
